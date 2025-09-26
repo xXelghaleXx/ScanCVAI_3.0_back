@@ -1,0 +1,30 @@
+# Node modules
+node_modules/
+
+# Logs
+logs/
+*.log
+
+# Archivos subidos
+uploads/
+
+# Variables de entorno
+.env
+.env.local
+
+# Cache y temporales
+.cache/
+temp/
+tmp/
+
+# IDE
+.vscode/
+.idea/
+
+# Base de datos local
+*.db
+*.sqlite
+
+# Build outputs
+dist/
+build/
