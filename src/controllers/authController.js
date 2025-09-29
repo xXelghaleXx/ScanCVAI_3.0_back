@@ -138,7 +138,7 @@ exports.login = async (req, res) => {
         code: "INACTIVE_ACCOUNT"
       });
     }
-
+      
     // 5. Verificar bloqueo por intentos fallidos
     if (alumno.intentos_fallidos >= 5) {
       const ultimoIntento = new Date(alumno.fecha_ultimo_acceso);
@@ -225,105 +225,42 @@ exports.googleLogin = async (req, res) => {
   try {
     const { token } = req.body;
 
-    // Validar que se envió el token
-    if (!token) {
-      return res.status(400).json({ 
-        error: "Token de Google requerido",
-        code: "MISSING_GOOGLE_TOKEN"
-      });
-    }
+    if (!token) return res.status(400).json({ error: "Token de Google requerido" });
 
-    // Verificar el token con Google
     const ticket = await client.verifyIdToken({
       idToken: token,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    const { email, name, picture, email_verified } = payload;
+    const { email, name } = payload;
 
-    // Validar que el email esté verificado
-    if (!email_verified) {
-      return res.status(400).json({
-        error: "El email de Google no está verificado",
-        code: "EMAIL_NOT_VERIFIED"
-      });
-    }
-
-    // Buscar o crear usuario
     let alumno = await Alumno.findOne({ where: { correo: email } });
 
     if (!alumno) {
-      // Crear nuevo usuario con datos de Google
       alumno = await Alumno.create({
-        nombre: name || email.split('@')[0],
+        nombre: name,
         correo: email,
-        contrasena: Math.random().toString(36).slice(-8), // Contraseña aleatoria
-        // Agregar campos si existen en tu modelo:
-        // estado: 'activo',
-        // intentos_fallidos: 0
+        contrasena: Math.random().toString(36).slice(-8),
       });
-
-      logger.userRegistered(alumno.id, email, 'google');
     }
 
-    // Actualizar último acceso
-    if (alumno.fecha_ultimo_acceso !== undefined) {
-      alumno.fecha_ultimo_acceso = new Date();
-      await alumno.save();
-    }
+    alumno.fecha_ultimo_acceso = new Date();
+    await alumno.save();
 
-    // Generar tokens - CORREGIDO: agregar req como tercer parámetro
-    const { accessToken, refreshToken, expiresAt } = await generarTokens(
-      alumno.id, 
-      alumno.correo, 
-      req  // ← ESTE PARÁMETRO FALTABA
-    );
+    const { accessToken, refreshToken } = await generarTokens(alumno.id, alumno.correo);
 
-    // Log de acceso exitoso
-    logger.userLogin(alumno.id, email, 'google');
-
-    // Respuesta exitosa
     res.json({
       access_token: accessToken,
       refresh_token: refreshToken,
       token_type: "Bearer",
-      expires_in: 900, // 15 minutos
-      refresh_expires_at: expiresAt,
-      user: {
-        id: alumno.id,
-        nombre: alumno.nombre,
-        correo: alumno.correo,
-        ultimo_acceso: alumno.fecha_ultimo_acceso,
-        login_method: 'google'
-      }
+      expires_in: 900,
     });
-
   } catch (error) {
-    // Manejo de errores específicos de Google
-    if (error.message.includes('Invalid token')) {
-      logger.warn('Token de Google inválido', {
-        error: error.message,
-        ip: req.ip
-      });
-      return res.status(401).json({
-        error: "Token de Google inválido o expirado",
-        code: "INVALID_GOOGLE_TOKEN"
-      });
-    }
-
-    // Error general
-    logger.error('Error en login con Google', error, {
-      ip: req.ip,
-      user_agent: req.headers['user-agent']
-    });
-
-    res.status(500).json({ 
-      error: "Error en autenticación con Google",
-      code: "GOOGLE_AUTH_ERROR"
-    });
+    res.status(500).json({ error: error.message });
   }
 };
+
 
 // Función para limpiar tokens antiguos o revocados
 const limpiarTokensAntiguos = async (alumnoId) => {
