@@ -28,6 +28,20 @@ Alumno.init(
       type: DataTypes.STRING,
       allowNull: false,
     },
+    // CAMPOS FALTANTES AGREGADOS:
+    estado: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'activo',
+      validate: {
+        isIn: [['activo', 'inactivo', 'suspendido']]
+      }
+    },
+    intentos_fallidos: {
+      type: DataTypes.INTEGER,
+      allowNull: false,
+      defaultValue: 0
+    }
   },
   {
     sequelize,

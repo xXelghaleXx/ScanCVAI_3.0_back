@@ -111,7 +111,7 @@ exports.login = async (req, res) => {
     // 2. Validar credenciales de usuario
     const alumno = await Alumno.findOne({ 
       where: { correo },
-      attributes: ['id', 'correo', 'contrasena', 'nombre', 'estado', 'intentos_fallidos', 'fecha_ultimo_acceso']
+      attributes: ['id', 'correo', 'contrasena', 'nombre', 'fecha_ultimo_acceso']
     });
 
     // 3. Manejo de usuario no encontrado
@@ -125,7 +125,7 @@ exports.login = async (req, res) => {
         code: "USER_NOT_FOUND"
       });
     }
-
+/*
     // 4. Verificar estado de la cuenta
     if (alumno.estado !== 'activo') {
       logger.warn('Intento de acceso a cuenta inactiva', {
@@ -138,7 +138,7 @@ exports.login = async (req, res) => {
         code: "INACTIVE_ACCOUNT"
       });
     }
-
+      
     // 5. Verificar bloqueo por intentos fallidos
     if (alumno.intentos_fallidos >= 5) {
       const ultimoIntento = new Date(alumno.fecha_ultimo_acceso);
@@ -154,7 +154,7 @@ exports.login = async (req, res) => {
         alumno.intentos_fallidos = 0;
       }
     }
-
+*/
     // 6. Validar contraseña
     const valido = await alumno.checkPassword(contrasena);
     if (!valido) {

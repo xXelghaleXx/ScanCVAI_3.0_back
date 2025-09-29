@@ -1,23 +1,23 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
+const Alumno = require("./Alumno");
 
-module.exports = (sequelize) => {
-  const Token = sequelize.define('Token', {
-    id: {
-      type: DataTypes.INTEGER,
-      primaryKey: true,
-      autoIncrement: true
-    },
-    token: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
-    },
-    expiresAt: {
-      type: DataTypes.DATE,
-      allowNull: false,
-      defaultValue: DataTypes.NOW // Agregar valor por defecto
-    },
+const Token = sequelize.define('Token', {
+  id: {
+    type: DataTypes.INTEGER,
+    primaryKey: true,
+    autoIncrement: true
+  },
+  refreshToken: {
+    type: DataTypes.TEXT,
+    allowNull: false,
+    unique: true
+  },
+  expiresAt: {
+    type: DataTypes.DATE,
+    allowNull: false,
+    defaultValue: () => new Date(Date.now() + 7 * 24 * 60 * 60 * 1000) // 7 días
+  },
   isRevoked: {
     type: DataTypes.BOOLEAN,
     allowNull: false,
@@ -34,8 +34,19 @@ module.exports = (sequelize) => {
   createdByIp: {
     type: DataTypes.STRING,
     allowNull: true
+  },
+  alumnoId: {
+    type: DataTypes.INTEGER,
+    allowNull: false,
+    references: {
+      model: Alumno,
+      key: 'id'
+    }
   }
 }, {
+  sequelize,
+  modelName: 'Token',
+  tableName: 'tokens',
   indexes: [
     {
       unique: true,
@@ -47,18 +58,18 @@ module.exports = (sequelize) => {
     {
       fields: ['expiresAt']
     }
-  ],
-  hooks: {
-    beforeCreate: (token) => {
-      if (!token.expiresAt) {
-        // Por defecto, expira en 7 días
-        token.expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-      }
-    }
-  }
+  ]
+});
+
+// Asociaciones
+Token.belongsTo(Alumno, {
+  foreignKey: 'alumnoId',
+  as: 'alumno'
+});
+
+Alumno.hasMany(Token, {
+  foreignKey: 'alumnoId',
+  as: 'tokens'
 });
 
 module.exports = Token;
-
-  return Token;
-};
