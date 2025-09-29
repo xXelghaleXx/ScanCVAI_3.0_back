@@ -147,10 +147,14 @@ class CVController {
       // 5. Crear/actualizar habilidades detectadas
       await CVController.procesarHabilidadesDetectadas(cv, analisisIA.analisis);
 
+      // 6. Generar el informe automáticamente
+      const informe = await CVController._generarInformeDesdeAnalisis(cv, analisisIA.analisis);
+
       const processingTime = Date.now() - startTime;
       logger.cvProcessed(alumnoId, cvId, processingTime);
 
       res.json({
+        informe,
         message: "CV procesado correctamente",
         processing_time: processingTime + "ms",
         validation: {
@@ -183,36 +187,148 @@ class CVController {
     }
   }
 
-// 🔧 Helper: Procesar habilidades detectadas por IA
-static async procesarHabilidadesDetectadas(cv, analisisIA) {
-  try {
-    // Obtener tipos de habilidades
-    const tipoTecnica = await TipoHabilidad.findOne({ where: { nombre: 'Técnica' } });
-    const tipoBlanda = await TipoHabilidad.findOne({ where: { nombre: 'Blanda' } });
+  // 📊 RF-103: Generar informe detallado
+  static async generarInforme(req, res) {
+    try {
+      const { cvId } = req.params;
+      const alumnoId = req.user.id;
 
-    if (!tipoTecnica || !tipoBlanda) {
-      logger.warn("Tipos de habilidad no encontrados en BD");
-      return;
-    }
+      // Verificar que el CV pertenece al alumno y está procesado
+      const cv = await CV.findOne({
+        where: { id: cvId, alumnoId },
+        include: [
+          { model: Alumno, as: 'alumno' },
+          {
+            model: Informe,
+            as: 'informes',
+            include: [
+              { model: InformeFortalezas, as: 'fortalezas' },
+              { model: InformeHabilidades, as: 'habilidades', include: [{ model: Habilidad, as: 'habilidad' }] },
+              { model: InformeAreasMejora, as: 'areas_mejora' }
+            ]
+          }
+        ]
+      });
 
-    // Procesar habilidades técnicas
-    if (analisisIA.habilidades_tecnicas) {
-      for (const habilidadNombre of analisisIA.habilidades_tecnicas) {
-        await CVController.crearOAsociarHabilidad(cv.id, habilidadNombre, tipoTecnica.id);
+      if (!cv) {
+        return res.status(404).json({ error: "CV no encontrado" });
       }
-    }
 
-    // Procesar habilidades blandas
-    if (analisisIA.habilidades_blandas) {
-      for (const habilidadNombre of analisisIA.habilidades_blandas) {
-        await CVController.crearOAsociarHabilidad(cv.id, habilidadNombre, tipoBlanda.id);
+      if (!cv.contenido_extraido) {
+        return res.status(400).json({ 
+          error: "CV debe ser procesado primero antes de generar informe",
+          needs_processing: true
+        });
       }
-    }
 
-  } catch (error) {
-    logger.error("Error procesando habilidades detectadas", error);
+      // Si ya existe un informe, devolverlo
+      if (cv.informes && cv.informes.length > 0) {
+        const informe = cv.informes[0]; // Tomar el más reciente
+        
+        logger.info("Informe existente encontrado", {
+          user_id: alumnoId,
+          cv_id: cvId,
+          informe_id: informe.id
+        });
+
+        return res.json({
+          message: "Informe ya generado previamente",
+          informe: {
+            id: informe.id,
+            resumen: informe.resumen,
+            fecha_creacion: informe.fecha_creacion,
+            fortalezas: informe.fortalezas.map(f => f.fortaleza),
+            areas_mejora: informe.areas_mejora.map(a => a.area_mejora),
+            habilidades: informe.habilidades.map(h => h.habilidad.habilidad),
+            cv_info: {
+              archivo: cv.archivo,
+              fecha_procesamiento: cv.updatedAt
+            }
+          }
+        });
+      }
+
+      // Si no existe informe, regenerarlo desde el análisis IA
+      logger.info("Regenerando informe desde contenido procesado", {
+        user_id: alumnoId,
+        cv_id: cvId
+      });
+
+      // Re-analizar con IA para generar nuevo informe
+      const analisisIA = await llamaService.analizarCV(cv.contenido_extraido, cv.alumno.nombre);
+      
+      if (!analisisIA.success) {
+        return res.status(500).json({
+          error: "Error regenerando análisis para informe",
+          details: analisisIA.error
+        });
+      }
+
+      // Generar nuevo informe
+      const nuevoInforme = await CVController._generarInformeDesdeAnalisis(cv, analisisIA.analisis);
+      
+      if (!nuevoInforme) {
+        return res.status(500).json({ error: "Error generando informe" });
+      }
+
+      logger.success("Informe generado correctamente", {
+        user_id: alumnoId,
+        cv_id: cvId,
+        informe_id: nuevoInforme.id
+      });
+
+      res.status(201).json({
+        message: "Informe generado correctamente",
+        informe: {
+          id: nuevoInforme.id,
+          resumen: nuevoInforme.resumen,
+          fecha_creacion: nuevoInforme.fecha_creacion,
+          fortalezas: analisisIA.analisis.fortalezas || [],
+          areas_mejora: analisisIA.analisis.areas_mejora || [],
+          habilidades_tecnicas: analisisIA.analisis.habilidades_tecnicas || [],
+          habilidades_blandas: analisisIA.analisis.habilidades_blandas || []
+        }
+      });
+
+    } catch (error) {
+      logger.error("Error generando informe", error, {
+        user_id: req.user?.id,
+        cv_id: req.params.cvId
+      });
+      res.status(500).json({ error: error.message });
+    }
   }
-}
+
+  // 🔧 Helper: Procesar habilidades detectadas por IA
+  static async procesarHabilidadesDetectadas(cv, analisisIA) {
+    try {
+      // Obtener tipos de habilidades
+      const tipoTecnica = await TipoHabilidad.findOne({ where: { nombre: 'Técnica' } });
+      const tipoBlanda = await TipoHabilidad.findOne({ where: { nombre: 'Blanda' } });
+
+      if (!tipoTecnica || !tipoBlanda) {
+        logger.warn("Tipos de habilidad no encontrados en BD");
+        return;
+      }
+
+      // Procesar habilidades técnicas
+      if (analisisIA.habilidades_tecnicas) {
+        for (const habilidadNombre of analisisIA.habilidades_tecnicas) {
+          await CVController.crearOAsociarHabilidad(cv.id, habilidadNombre, tipoTecnica.id);
+        }
+      }
+
+      // Procesar habilidades blandas
+      if (analisisIA.habilidades_blandas) {
+        for (const habilidadNombre of analisisIA.habilidades_blandas) {
+          await CVController.crearOAsociarHabilidad(cv.id, habilidadNombre, tipoBlanda.id);
+        }
+      }
+
+    } catch (error) {
+      logger.error("Error procesando habilidades detectadas", error);
+    }
+  }
 
   // 🔧 Helper: Crear o asociar habilidad
   static async crearOAsociarHabilidad(cvId, habilidadNombre, tipoId) {
@@ -249,185 +365,42 @@ static async procesarHabilidadesDetectadas(cv, analisisIA) {
     }
   }
 
-  // 📊 RF-103: Generar informe detallado
-  static async generarInforme(req, res) {
-    const startTime = Date.now();
-    const alumnoId = req.user.id;
-    const { cvId } = req.params;
-
+  // 🔧 Helper: Generar informe desde un análisis de IA
+  static async _generarInformeDesdeAnalisis(cv, analisis) {
     try {
-      const cv = await CV.findOne({
-        where: { id: cvId, alumnoId },
-        include: [
-          { 
-            model: Alumno, 
-            as: 'alumno' 
-          },
-          {
-            model: CVHabilidad,
-            as: 'cv_habilidades',
-            include: [
-              {
-                model: Habilidad,
-                as: 'habilidad',
-                include: [{ model: TipoHabilidad, as: 'tipo' }]
-              }
-            ]
-          }
-        ]
-      });
+      const resumenFinal = analisis.experiencia_resumen || `Análisis de CV para ${cv.alumno.nombre} completado.`;
 
-      if (!cv) {
-        return res.status(404).json({ error: "CV no encontrado" });
-      }
-
-      if (!cv.contenido_extraido) {
-        return res.status(400).json({ 
-          error: "CV debe ser procesado primero",
-          action_required: "POST /api/cv/" + cvId + "/procesar"
-        });
-      }
-
-      // Verificar si ya existe un informe
-      const informeExistente = await Informe.findOne({ where: { cvId } });
-      if (informeExistente) {
-        return res.status(400).json({
-          error: "Ya existe un informe para este CV",
-          informe_id: informeExistente.id,
-          action: "GET /api/informes/" + informeExistente.id
-        });
-      }
-
-      logger.info("Generando informe detallado", {
-        user_id: alumnoId,
-        cv_id: cvId
-      });
-
-      // 1. Re-analizar con IA para obtener datos estructurados del informe
-      const analisisCompleto = await llamaService.analizarCV(cv.contenido_extraido, cv.alumno.nombre);
-      
-      if (!analisisCompleto.success) {
-        return res.status(500).json({
-          error: "Error generando análisis para informe",
-          details: analisisCompleto.error
-        });
-      }
-
-      // 2. Generar resumen ejecutivo
-      const resumenIA = await llamaService.generarResumenInforme(
-        {
-          nombre: cv.alumno.nombre,
-          archivo: cv.archivo,
-          fecha_procesamiento: cv.updatedAt
-        },
-        analisisCompleto.analisis
-      );
-
-      const resumenFinal = resumenIA.success ? 
-        resumenIA.resumen : 
-        `Informe de análisis de CV para ${cv.alumno.nombre}. Análisis completado el ${utilsService.formatDate(new Date())}.`;
-
-      // 3. Crear informe principal
       const informe = await Informe.create({
         cvId: cv.id,
-        resumen: resumenFinal
+        resumen: resumenFinal,
       });
 
-      // 4. Crear registros detallados
-      const analisis = analisisCompleto.analisis;
-
-      // Fortalezas
       if (analisis.fortalezas && analisis.fortalezas.length > 0) {
-        const fortalezasData = analisis.fortalezas.map(fortaleza => ({
-          informeId: informe.id,
-          fortaleza: fortaleza.substring(0, 255) // Limitar longitud
-        }));
+        const fortalezasData = analisis.fortalezas.map(f => ({ informeId: informe.id, fortaleza: f.substring(0, 255) }));
         await InformeFortalezas.bulkCreate(fortalezasData);
       }
 
-      // Áreas de mejora
       if (analisis.areas_mejora && analisis.areas_mejora.length > 0) {
-        const areasData = analisis.areas_mejora.map(area => ({
-          informeId: informe.id,
-          area_mejora: area.substring(0, 255)
-        }));
+        const areasData = analisis.areas_mejora.map(a => ({ informeId: informe.id, area_mejora: a.substring(0, 255) }));
         await InformeAreasMejora.bulkCreate(areasData);
       }
 
       // Habilidades del informe (desde las ya procesadas en el CV)
-      if (cv.cv_habilidades && cv.cv_habilidades.length > 0) {
-        const habilidadesInforme = cv.cv_habilidades.map(cvHab => ({
+      const cvHabilidades = await CVHabilidad.findAll({ where: { cvId: cv.id } });
+      if (cvHabilidades.length > 0) {
+        const habilidadesInforme = cvHabilidades.map(cvHab => ({
           informeId: informe.id,
           habilidadId: cvHab.habilidadId
         }));
         await InformeHabilidades.bulkCreate(habilidadesInforme);
       }
 
-      // 5. Obtener informe completo para respuesta
-      const informeCompleto = await Informe.findByPk(informe.id, {
-        include: [
-          { model: InformeFortalezas, as: 'fortalezas' },
-          { model: InformeAreasMejora, as: 'areas_mejora' },
-          { 
-            model: InformeHabilidades, 
-            as: 'habilidades',
-            include: [
-              {
-                model: Habilidad,
-                as: 'habilidad',
-                include: [{ model: TipoHabilidad, as: 'tipo' }]
-              }
-            ]
-          }
-        ]
-      });
-
-      const processingTime = Date.now() - startTime;
-      
-      logger.success("Informe generado correctamente", {
-        user_id: alumnoId,
-        cv_id: cvId,
-        informe_id: informe.id,
-        processing_time: processingTime,
-        fortalezas_count: informeCompleto.fortalezas.length,
-        areas_mejora_count: informeCompleto.areas_mejora.length,
-        habilidades_count: informeCompleto.habilidades.length
-      });
-
-      res.status(201).json({
-        message: "Informe generado correctamente",
-        processing_time: processingTime + "ms",
-        informe: {
-          id: informeCompleto.id,
-          resumen: informeCompleto.resumen,
-          fecha_generacion: informeCompleto.fecha_generacion,
-          estadisticas: {
-            fortalezas: informeCompleto.fortalezas.length,
-            areas_mejora: informeCompleto.areas_mejora.length,
-            habilidades: informeCompleto.habilidades.length,
-            habilidades_tecnicas: informeCompleto.habilidades.filter(h => 
-              h.habilidad.tipo.nombre === 'Técnica'
-            ).length,
-            habilidades_blandas: informeCompleto.habilidades.filter(h => 
-              h.habilidad.tipo.nombre === 'Blanda'
-            ).length
-          }
-        },
-        acciones: {
-          ver_completo: `/api/informes/${informe.id}`,
-          descargar_pdf: `/api/informes/${informe.id}/pdf`,
-          enviar_email: `/api/informes/${informe.id}/enviar-email`
-        }
-      });
+      logger.info("Informe generado automáticamente desde procesamiento de CV", { informe_id: informe.id, cv_id: cv.id });
+      return informe;
 
     } catch (error) {
-      const processingTime = Date.now() - startTime;
-      logger.error("Error generando informe", error, {
-        user_id: alumnoId,
-        cv_id: cvId,
-        processing_time: processingTime
-      });
-      res.status(500).json({ error: error.message });
+      logger.error("Error generando informe desde análisis", error, { cv_id: cv.id });
+      return null;
     }
   }
 
@@ -455,7 +428,7 @@ static async procesarHabilidadesDetectadas(cv, analisisIA) {
     }
   }
 
-// 🗑️ Eliminar CV
+  // 🗑️ Eliminar CV
   static async eliminarCV(req, res) {
     const sequelize = require('../config/database');
     const transaction = await sequelize.transaction();

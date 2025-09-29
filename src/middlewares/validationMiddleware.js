@@ -1,75 +1,176 @@
 const { body, param, query, validationResult } = require('express-validator');
+const logger = require('../services/LoggerService');
+const utilsService = require('../services/UtilsService');
 
-// Middleware para manejar errores de validación
+// � Sanitizar datos sensibles antes de logear
+const sanitizeRequestBody = (body) => {
+  const sanitized = { ...body };
+  const sensitiveFields = ['password', 'token', 'secret', 'key', 'authorization'];
+  
+  Object.keys(sanitized).forEach(key => {
+    if (sensitiveFields.some(field => key.toLowerCase().includes(field))) {
+      sanitized[key] = '[REDACTED]';
+    }
+  });
+  
+  return sanitized;
+};
+
+// �📝 Middleware para manejar errores de validación
 const handleValidationErrors = (req, res, next) => {
   const errors = validationResult(req);
+  
   if (!errors.isEmpty()) {
+    // Generar ID único para el error
+    const errorId = utilsService.generateUniqueId();
+    
+    // Formatear errores para el log
+    const formattedErrors = errors.array().map(err => ({
+      field: err.path,
+      message: err.msg,
+      value: err.value,
+      location: err.location,
+      type: err.type
+    }));
+
+    // Log detallado del error
+    logger.warn('Errores de validación detectados', {
+      error_id: errorId,
+      endpoint: req.originalUrl,
+      method: req.method,
+      user_id: req.user?.id || 'anonymous',
+      client_ip: req.ip,
+      user_agent: req.headers['user-agent'],
+      errors: formattedErrors,
+      body: sanitizeRequestBody(req.body),
+      query: req.query
+    });
+
+    // Agrupar errores por campo para una respuesta más clara
+    const groupedErrors = formattedErrors.reduce((acc, err) => {
+      if (!acc[err.field]) {
+        acc[err.field] = [];
+      }
+      acc[err.field].push(err.message);
+      return acc;
+    }, {});
+
+    // Enviar respuesta estructurada
     return res.status(400).json({
       error: 'Errores de validación',
-      details: errors.array().map(err => ({
-        field: err.path,
-        message: err.msg,
-        value: err.value
-      }))
+      code: 'VALIDATION_ERROR',
+      error_id: errorId,
+      validation_errors: groupedErrors,
+      timestamp: new Date().toISOString()
     });
   }
   next();
 };
 
-// 📊 Validaciones para entrevistas
-const validateEntrevistaRequest = [
-  body('preguntaId')
-    .isInt({ min: 1 })
-    .withMessage('ID de pregunta debe ser un número entero positivo'),
-  
-  body('respuesta')
-    .isLength({ min: 10, max: 2000 })
-    .withMessage('La respuesta debe tener entre 10 y 2000 caracteres')
-    .trim(),
-  
-  handleValidationErrors
-];
-
-// 📧 Validaciones para envío de email
-const validateEmailRequest = [
-  body('email_destino')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Email de destino inválido'),
-  
-  body('mensaje')
-    .optional()
-    .isLength({ max: 500 })
-    .withMessage('Mensaje opcional no puede exceder 500 caracteres'),
-  
-  handleValidationErrors
-];
-
-// 🔍 Validaciones para búsquedas
-const validateSearchQuery = [
-  query('q')
-    .isLength({ min: 2, max: 100 })
-    .withMessage('Término de búsqueda debe tener entre 2 y 100 caracteres')
+// 🛡️ Validaciones comunes reutilizables
+const commonValidations = {
+  // Validación de ID
+  id: param('id')
     .trim()
-    .escape(),
+    .notEmpty().withMessage('El ID es requerido')
+    .isInt({ min: 1 }).withMessage('El ID debe ser un número entero positivo'),
   
-  handleValidationErrors
-];
+  // Validación de email
+  email: body('email')
+    .trim()
+    .notEmpty().withMessage('El email es requerido')
+    .isEmail().withMessage('Email inválido')
+    .normalizeEmail(),
+  
+  // Validación de contraseña
+  password: body('password')
+    .trim()
+    .notEmpty().withMessage('La contraseña es requerida')
+    .isLength({ min: 8 }).withMessage('La contraseña debe tener al menos 8 caracteres')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d\w\W]{8,}$/)
+    .withMessage('La contraseña debe contener al menos una mayúscula, una minúscula y un número'),
+  
+  // Validación de fecha
+  date: (field) => body(field)
+    .trim()
+    .notEmpty().withMessage('La fecha es requerida')
+    .isISO8601().withMessage('Formato de fecha inválido'),
+  
+  // Validación de texto
+  text: (field, { required = true, min = 1, max = undefined } = {}) => {
+    let validation = body(field).trim();
+    
+    if (required) {
+      validation = validation.notEmpty().withMessage(`El campo ${field} es requerido`);
+    }
+    
+    if (min !== undefined) {
+      validation = validation.isLength({ min }).withMessage(`El campo ${field} debe tener al menos ${min} caracteres`);
+    }
+    
+    if (max !== undefined) {
+      validation = validation.isLength({ max }).withMessage(`El campo ${field} no puede tener más de ${max} caracteres`);
+    }
+    
+    return validation;
+  },
+  
+  // Validación de array
+  array: (field, { required = true, min = undefined, max = undefined } = {}) => {
+    let validation = body(field).isArray().withMessage(`El campo ${field} debe ser un array`);
+    
+    if (required) {
+      validation = validation.notEmpty().withMessage(`El campo ${field} no puede estar vacío`);
+    }
+    
+    if (min !== undefined) {
+      validation = validation.isLength({ min }).withMessage(`El campo ${field} debe tener al menos ${min} elementos`);
+    }
+    
+    if (max !== undefined) {
+      validation = validation.isLength({ max }).withMessage(`El campo ${field} no puede tener más de ${max} elementos`);
+    }
+    
+    return validation;
+  }
+};
 
-// 📄 Validaciones para paginación
-const validatePaginationQuery = [
-  query('page')
-    .optional()
-    .isInt({ min: 1 })
-    .withMessage('Número de página debe ser un entero positivo'),
-  
-  query('limit')
-    .optional()
-    .isInt({ min: 1, max: 100 })
-    .withMessage('Límite debe estar entre 1 y 100'),
-  
-  handleValidationErrors
-];
+// 🔍 Validaciones específicas por ruta
+const validations = {
+  auth: {
+    login: [
+      commonValidations.email,
+      commonValidations.password
+    ],
+    register: [
+      commonValidations.email,
+      commonValidations.password,
+      commonValidations.text('nombre', { min: 2, max: 50 }),
+      commonValidations.text('apellido', { min: 2, max: 50 })
+    ],
+    changePassword: [
+      commonValidations.password,
+      body('newPassword')
+        .trim()
+        .notEmpty().withMessage('La nueva contraseña es requerida')
+        .isLength({ min: 8 }).withMessage('La nueva contraseña debe tener al menos 8 caracteres')
+        .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d\w\W]{8,}$/)
+        .withMessage('La nueva contraseña debe contener al menos una mayúscula, una minúscula y un número')
+        .custom((value, { req }) => {
+          if (value === req.body.password) {
+            throw new Error('La nueva contraseña debe ser diferente a la actual');
+          }
+          return true;
+        })
+    ]
+  }
+};
+
+module.exports = {
+  handleValidationErrors,
+  commonValidations,
+  validations
+};
 
 // 🆔 Validaciones para IDs en parámetros
 const validateIdParam = (paramName = 'id') => [
@@ -80,7 +181,7 @@ const validateIdParam = (paramName = 'id') => [
   handleValidationErrors
 ];
 
-// 📊 Validaciones para procesar CV
+// 📄 Validaciones para procesar CV
 const validateCVProcessing = [
   param('cvId')
     .isInt({ min: 1 })
@@ -89,37 +190,7 @@ const validateCVProcessing = [
   handleValidationErrors
 ];
 
-// 🎯 Validaciones para finalizar entrevista
-const validateFinalizarEntrevista = [
-  param('entrevistaId')
-    .isInt({ min: 1 })
-    .withMessage('ID de entrevista debe ser un número entero positivo'),
-  
-  handleValidationErrors
-];
-
-// 🔐 Validaciones para registro de usuario
-const validateUserRegistration = [
-  body('nombre')
-    .isLength({ min: 2, max: 100 })
-    .withMessage('Nombre debe tener entre 2 y 100 caracteres')
-    .matches(/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/)
-    .withMessage('Nombre solo puede contener letras y espacios')
-    .trim(),
-  
-  body('correo')
-    .isEmail()
-    .normalizeEmail()
-    .withMessage('Email inválido'),
-  
-  body('contrasena')
-    .isLength({ min: 6, max: 255 })
-    .withMessage('Contraseña debe tener al menos 6 caracteres'),
-  
-  handleValidationErrors
-];
-
-// 🔑 Validaciones para login
+// 🔐 Validaciones para login
 const validateUserLogin = [
   body('correo')
     .isEmail()
@@ -141,48 +212,23 @@ const validateUserLogin = [
   handleValidationErrors
 ];
 
-// 📱 Validaciones para Google login
-const validateGoogleLogin = [
-  body('token')
-    .notEmpty()
-    .withMessage('Token de Google requerido')
-    .isLength({ min: 10 })
-    .withMessage('Token de Google inválido'),
-  
-  handleValidationErrors
-];
-
-// 🔄 Validaciones para refresh token
-const validateRefreshToken = [
-  body('refresh_token')
-    .notEmpty()
-    .withMessage('Refresh token requerido')
-    .isJWT()
-    .withMessage('Refresh token inválido'),
-  
-  handleValidationErrors
-];
-
-// 📊 Validaciones para crear pregunta (admin)
-const validateCreatePregunta = [
-  body('texto')
-    .isLength({ min: 10, max: 1000 })
-    .withMessage('Texto de pregunta debe tener entre 10 y 1000 caracteres')
+// 🔐 Validaciones para registro de usuario
+const validateUserRegistration = [
+  body('nombre')
+    .isLength({ min: 2, max: 100 })
+    .withMessage('Nombre debe tener entre 2 y 100 caracteres')
+    .matches(/^[a-zA-ZáéíóúÁÉÍÓÚñÑ\s]+$/)
+    .withMessage('Nombre solo puede contener letras y espacios')
     .trim(),
   
-  handleValidationErrors
-];
-
-// 🧠 Validaciones para crear habilidad (admin)
-const validateCreateHabilidad = [
-  body('habilidad')
-    .isLength({ min: 2, max: 255 })
-    .withMessage('Nombre de habilidad debe tener entre 2 y 255 caracteres')
-    .trim(),
+  body('correo')
+    .isEmail()
+    .normalizeEmail()
+    .withMessage('Email inválido'),
   
-  body('tipoId')
-    .isInt({ min: 1 })
-    .withMessage('Tipo de habilidad debe ser un ID válido'),
+  body('contrasena')
+    .isLength({ min: 6, max: 255 })
+    .withMessage('Contraseña debe tener al menos 6 caracteres'),
   
   handleValidationErrors
 ];
@@ -259,21 +305,10 @@ module.exports = {
   simpleRateLimit,
   
   // Validaciones específicas
-  validateEntrevistaRequest,
-  validateEmailRequest,
-  validateSearchQuery,
-  validatePaginationQuery,
   validateIdParam,
   validateCVProcessing,
-  validateFinalizarEntrevista,
   
   // Validaciones de auth
   validateUserRegistration,
-  validateUserLogin,
-  validateGoogleLogin,
-  validateRefreshToken,
-  
-  // Validaciones de admin
-  validateCreatePregunta,
-  validateCreateHabilidad
+  validateUserLogin
 };

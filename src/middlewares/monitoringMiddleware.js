@@ -121,59 +121,243 @@ const performanceMonitoring = (req, res, next) => {
 // 🚨 Middleware de manejo de errores globales
 const globalErrorHandler = (err, req, res, next) => {
   const errorId = utilsService.generateUniqueId();
+  const startTime = Date.now();
   
-  // Incrementar métricas de error
-  metrics.errors.total++;
-  const errorType = err.name || 'UnknownError';
-  metrics.errors.by_type[errorType] = (metrics.errors.by_type[errorType] || 0) + 1;
+  try {
+    // Incrementar métricas de error
+    metrics.errors.total++;
+    const errorType = err.name || 'UnknownError';
+    metrics.errors.by_type[errorType] = (metrics.errors.by_type[errorType] || 0) + 1;
+
+    // Clasificación detallada de errores
+    const errorDetails = classifyError(err);
+    const { statusCode, errorCode, message, severity } = errorDetails;
+
+    // Enriquecer información del error
+    const enrichedError = {
+      error_id: errorId,
+      timestamp: new Date().toISOString(),
+      request: {
+        method: req.method,
+        path: req.originalUrl,
+        query: req.query,
+        body: shouldLogRequestBody(req) ? sanitizeRequestBody(req.body) : undefined,
+        headers: sanitizeHeaders(req.headers),
+        ip: req.ip,
+        user_agent: req.get('User-Agent')
+      },
+      user: {
+        id: req.user?.id || 'anonymous',
+        roles: req.user?.roles,
+        session_id: req.sessionID
+      },
+      error: {
+        type: errorType,
+        code: errorCode,
+        message: err.message,
+        severity,
+        stack: process.env.NODE_ENV === 'development' ? err.stack : undefined
+      },
+      context: {
+        environment: process.env.NODE_ENV,
+        node_version: process.version,
+        memory_usage: process.memoryUsage(),
+        uptime: process.uptime()
+      }
+    };
+
+    // Log según severidad
+    switch (severity) {
+      case 'critical':
+        logger.error('Error crítico detectado', enrichedError);
+        notifyAdmins(enrichedError); // Función hipotética para notificar a administradores
+        break;
+      case 'high':
+        logger.error('Error grave detectado', enrichedError);
+        break;
+      case 'medium':
+        logger.warn('Error detectado', enrichedError);
+        break;
+      default:
+        logger.info('Error menor detectado', enrichedError);
+    }
+
+    // Construir respuesta para el cliente
+    const clientResponse = {
+      error: {
+        message,
+        code: errorCode,
+        id: errorId
+      },
+      status: 'error',
+      timestamp: new Date().toISOString()
+    };
+
+    // En desarrollo, incluir más detalles
+    if (process.env.NODE_ENV === 'development') {
+      clientResponse.debug = {
+        error_type: errorType,
+        stack: err.stack,
+        request_path: req.originalUrl,
+        processing_time: Date.now() - startTime
+      };
+    }
+
+    // Registrar métricas adicionales
+    updateErrorMetrics(errorDetails, startTime);
+
+    // Enviar respuesta
+    return res.status(statusCode).json(clientResponse);
+
+  } catch (handlingError) {
+    // Error durante el manejo del error
+    logger.error('Error crítico en el manejador de errores', {
+      original_error: err,
+      handling_error: handlingError,
+      error_id: errorId
+    });
+
+    // Respuesta de último recurso
+    return res.status(500).json({
+      error: {
+        message: 'Error interno del servidor',
+        id: errorId
+      },
+      status: 'error',
+      timestamp: new Date().toISOString()
+    });
+  }
+};
+
+// 🔍 Clasificar y enriquecer información del error
+function classifyError(err) {
+  let statusCode = 500;
+  let errorCode = 'INTERNAL_ERROR';
+  let message = 'Error interno del servidor';
+  let severity = 'medium';
+
+  // Errores de validación
+  if (err.name === 'ValidationError' || err.name === 'SequelizeValidationError') {
+    statusCode = 400;
+    errorCode = 'VALIDATION_ERROR';
+    message = 'Datos de entrada inválidos';
+    severity = 'low';
+  }
+  // Errores de autenticación
+  else if (err.name === 'UnauthorizedError' || err.name === 'JsonWebTokenError') {
+    statusCode = 401;
+    errorCode = 'AUTH_ERROR';
+    message = 'No autorizado';
+    severity = 'medium';
+  }
+  // Token expirado
+  else if (err.name === 'TokenExpiredError') {
+    statusCode = 401;
+    errorCode = 'TOKEN_EXPIRED';
+    message = 'Sesión expirada';
+    severity = 'low';
+  }
+  // Errores de permisos
+  else if (err.name === 'ForbiddenError') {
+    statusCode = 403;
+    errorCode = 'FORBIDDEN';
+    message = 'Acceso denegado';
+    severity = 'medium';
+  }
+  // Recursos no encontrados
+  else if (err.name === 'NotFoundError' || err.name === 'SequelizeEmptyResultError') {
+    statusCode = 404;
+    errorCode = 'NOT_FOUND';
+    message = 'Recurso no encontrado';
+    severity = 'low';
+  }
+  // Errores de base de datos
+  else if (err.name === 'SequelizeDatabaseError') {
+    statusCode = 500;
+    errorCode = 'DATABASE_ERROR';
+    message = 'Error de base de datos';
+    severity = 'high';
+  }
+  // Errores de conexión
+  else if (err.name === 'ConnectionError' || err.code === 'ECONNREFUSED') {
+    statusCode = 503;
+    errorCode = 'SERVICE_UNAVAILABLE';
+    message = 'Servicio no disponible';
+    severity = 'critical';
+  }
+  // Timeout
+  else if (err.name === 'TimeoutError' || err.code === 'ETIMEDOUT') {
+    statusCode = 504;
+    errorCode = 'TIMEOUT';
+    message = 'Tiempo de espera agotado';
+    severity = 'high';
+  }
+
+  return { statusCode, errorCode, message, severity };
+}
+
+// 🧹 Sanitizar headers sensibles
+function sanitizeHeaders(headers) {
+  const sanitized = { ...headers };
+  const sensitiveHeaders = ['authorization', 'cookie', 'x-api-key'];
   
-  // Log detallado del error
-  logger.error('Error global capturado', err, {
-    error_id: errorId,
-    method: req.method,
-    endpoint: req.originalUrl,
-    user_id: req.user?.id || 'anonymous',
-    user_agent: req.get('User-Agent'),
-    ip: req.ip,
-    body: req.method === 'POST' ? req.body : undefined
+  sensitiveHeaders.forEach(header => {
+    if (sanitized[header]) {
+      sanitized[header] = '[REDACTED]';
+    }
   });
   
-  // Determinar código de estado
-  let statusCode = 500;
-  let message = 'Error interno del servidor';
+  return sanitized;
+}
+
+// 🧹 Sanitizar body de la petición
+function sanitizeRequestBody(body) {
+  if (!body) return undefined;
   
-  if (err.name === 'ValidationError') {
-    statusCode = 400;
-    message = 'Datos de entrada inválidos';
-  } else if (err.name === 'UnauthorizedError' || err.name === 'JsonWebTokenError') {
-    statusCode = 401;
-    message = 'No autorizado';
-  } else if (err.name === 'ForbiddenError') {
-    statusCode = 403;
-    message = 'Acceso denegado';
-  } else if (err.name === 'NotFoundError') {
-    statusCode = 404;
-    message = 'Recurso no encontrado';
+  const sanitized = { ...body };
+  const sensitiveFields = ['password', 'token', 'secret', 'api_key'];
+  
+  sensitiveFields.forEach(field => {
+    if (sanitized[field]) {
+      sanitized[field] = '[REDACTED]';
+    }
+  });
+  
+  return sanitized;
+}
+
+// 📊 Actualizar métricas de error
+function updateErrorMetrics(errorDetails, startTime) {
+  const processingTime = Date.now() - startTime;
+  
+  metrics.errors.recent.push({
+    timestamp: new Date().toISOString(),
+    type: errorDetails.errorCode,
+    severity: errorDetails.severity,
+    processing_time: processingTime
+  });
+  
+  // Mantener solo los últimos 100 errores
+  if (metrics.errors.recent.length > 100) {
+    metrics.errors.recent = metrics.errors.recent.slice(-100);
   }
   
-  // Respuesta de error
-  const errorResponse = {
-    error: message,
-    error_id: errorId,
-    timestamp: new Date().toISOString()
-  };
+  // Actualizar contadores por tipo
+  metrics.errors.by_type[errorDetails.errorCode] = 
+    (metrics.errors.by_type[errorDetails.errorCode] || 0) + 1;
+}
+
+// 🔍 Determinar si se debe logear el body
+function shouldLogRequestBody(req) {
+  // No logear bodies de archivos o muy grandes
+  const contentType = req.get('Content-Type');
+  const contentLength = parseInt(req.get('Content-Length') || '0');
   
-  // En desarrollo, incluir stack trace
-  if (process.env.NODE_ENV === 'development') {
-    errorResponse.details = {
-      message: err.message,
-      stack: err.stack,
-      name: err.name
-    };
-  }
+  if (contentType?.includes('multipart/form-data')) return false;
+  if (contentLength > 10000) return false; // No logear bodies > 10KB
   
-  res.status(statusCode).json(errorResponse);
-};
+  return req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH';
+}
 
 // 🔍 Middleware de detección de anomalías
 const anomalyDetection = (req, res, next) => {
