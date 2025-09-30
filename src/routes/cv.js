@@ -10,7 +10,7 @@ router.use(authMiddleware);
 
 // 📄 RF-100: Subir CV (con rate limiting específico)
 router.post("/upload", 
-  simpleRateLimit(10, 60 * 1000), // 10 uploads por minuto
+  simpleRateLimit(10, 60 * 1000),
   uploadCV,
   cleanupOnError,
   CVController.subirCV
@@ -19,18 +19,35 @@ router.post("/upload",
 // 🧠 RF-102: Procesar CV con IA
 router.post("/:cvId/procesar", 
   validateCVProcessing,
-  simpleRateLimit(5, 60 * 1000), // 5 procesamientos por minuto
+  simpleRateLimit(5, 60 * 1000),
   CVController.procesarCV
 );
 
 // 📊 RF-103: Generar informe detallado
 router.post("/:cvId/informe", 
   validateIdParam('cvId'),
-  simpleRateLimit(5, 60 * 1000), // 5 informes por minuto
+  simpleRateLimit(5, 60 * 1000),
   CVController.generarInforme
 );
 
-// 📋 Obtener todos los CVs del alumno logueado
+// ✨ NUEVAS RUTAS DE HISTORIAL
+
+// 📋 Obtener historial completo paginado
+router.get("/historial", CVController.obtenerHistorialCompleto);
+
+// 📈 Estadísticas detalladas del historial
+router.get("/historial/estadisticas", CVController.obtenerEstadisticasHistorial);
+
+// 🔍 Buscar en el historial
+router.get("/historial/buscar", CVController.buscarEnHistorial);
+
+// 📥 Exportar historial completo
+router.get("/historial/exportar", CVController.exportarHistorial);
+
+// 📊 Comparar dos CVs
+router.get("/historial/comparar", CVController.compararCVs);
+
+// 📋 Obtener todos los CVs del alumno (simple)
 router.get("/", CVController.obtenerCVs);
 
 // 🗑️ Eliminar CV

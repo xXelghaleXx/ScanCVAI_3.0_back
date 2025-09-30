@@ -223,44 +223,116 @@ exports.login = async (req, res) => {
 
 exports.googleLogin = async (req, res) => {
   try {
-    const { token } = req.body;
+    const { credential } = req.body;  // ← Cambiar de 'token' a 'credential'
 
-    if (!token) return res.status(400).json({ error: "Token de Google requerido" });
+    // Validar que se envió el credential
+    if (!credential) {
+      return res.status(400).json({ 
+        error: "Credential de Google requerido",
+        code: "MISSING_GOOGLE_CREDENTIAL"
+      });
+    }
 
+    logger.info('Intento de login con Google', {
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+
+    // Verificar el token con Google
     const ticket = await client.verifyIdToken({
-      idToken: token,
+      idToken: credential,
       audience: process.env.GOOGLE_CLIENT_ID,
     });
 
     const payload = ticket.getPayload();
-    const { email, name } = payload;
+    const { email, name, picture, email_verified, sub: googleId } = payload;
 
-    let alumno = await Alumno.findOne({ where: { correo: email } });
+    logger.info('Token de Google verificado', {
+      email,
+      email_verified
+    });
 
-    if (!alumno) {
-      alumno = await Alumno.create({
-        nombre: name,
-        correo: email,
-        contrasena: Math.random().toString(36).slice(-8),
+    // Validar que el email esté verificado
+    if (!email_verified) {
+      return res.status(400).json({
+        error: "El email de Google no está verificado",
+        code: "EMAIL_NOT_VERIFIED"
       });
     }
 
+    // Buscar o crear usuario
+    let alumno = await Alumno.findOne({ where: { correo: email } });
+
+    if (!alumno) {
+      // Crear nuevo usuario con datos de Google
+      alumno = await Alumno.create({
+        nombre: name || email.split('@')[0],
+        correo: email,
+        contrasena: Math.random().toString(36).slice(-8), // Contraseña aleatoria
+        estado: 'activo',
+        intentos_fallidos: 0
+      });
+
+      logger.userRegistered(alumno.id, email, 'google');
+    }
+
+    // Actualizar último acceso
     alumno.fecha_ultimo_acceso = new Date();
     await alumno.save();
 
-    const { accessToken, refreshToken } = await generarTokens(alumno.id, alumno.correo);
+    // Generar tokens
+    const { accessToken, refreshToken, expiresAt } = await generarTokens(
+      alumno.id, 
+      alumno.correo, 
+      req
+    );
 
+    // Log de acceso exitoso
+    logger.userLogin(alumno.id, email, 'google');
+
+    // Respuesta exitosa
     res.json({
       access_token: accessToken,
       refresh_token: refreshToken,
       token_type: "Bearer",
-      expires_in: 900,
+      expires_in: 900, // 15 minutos
+      refresh_expires_at: expiresAt,
+      user: {
+        id: alumno.id,
+        nombre: alumno.nombre,
+        correo: alumno.correo,
+        picture: picture, // Incluir foto de perfil de Google
+        ultimo_acceso: alumno.fecha_ultimo_acceso,
+        login_method: 'google'
+      }
     });
+
   } catch (error) {
-    res.status(500).json({ error: error.message });
+    // Manejo de errores específicos de Google
+    if (error.message.includes('Invalid token') || error.message.includes('Token used too late')) {
+      logger.warn('Token de Google inválido', {
+        error: error.message,
+        ip: req.ip
+      });
+      return res.status(401).json({
+        error: "Token de Google inválido o expirado",
+        code: "INVALID_GOOGLE_TOKEN"
+      });
+    }
+
+    // Error general
+    logger.error('Error en login con Google', error, {
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+
+    res.status(500).json({ 
+      error: "Error en autenticación con Google",
+      code: "GOOGLE_AUTH_ERROR",
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 };
-
 
 // Función para limpiar tokens antiguos o revocados
 const limpiarTokensAntiguos = async (alumnoId) => {

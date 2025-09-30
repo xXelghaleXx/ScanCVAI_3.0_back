@@ -533,6 +533,537 @@ class CVController {
     }
   }
 
+  // 📊 Obtener historial completo de CVs del usuario
+  static async obtenerHistorialCompleto(req, res) {
+    try {
+      const alumnoId = req.user.id;
+      const { page = 1, limit = 10, sort = 'desc' } = req.query;
+      
+      const offset = (page - 1) * limit;
+
+      // Obtener CVs con paginación
+      const { count, rows: cvs } = await CV.findAndCountAll({
+        where: { alumnoId },
+        include: [
+          {
+            model: Informe,
+            as: 'informes',
+            required: false,
+            include: [
+              { model: InformeFortalezas, as: 'fortalezas' },
+              { model: InformeHabilidades, as: 'habilidades' },
+              { model: InformeAreasMejora, as: 'areas_mejora' }
+            ]
+          },
+          {
+            model: CVHabilidad,
+            as: 'cv_habilidades',
+            required: false,
+            include: [
+              {
+                model: Habilidad,
+                as: 'habilidad',
+                include: [{ model: TipoHabilidad, as: 'tipo' }]
+              }
+            ]
+          }
+        ],
+        order: [['fecha_creacion', sort.toUpperCase()]],
+        limit: parseInt(limit),
+        offset: parseInt(offset)
+      });
+
+      // Formatear respuesta
+      const historial = cvs.map(cv => ({
+        id: cv.id,
+        archivo: cv.archivo,
+        nombreArchivo: cv.archivo.split('/').pop(),
+        fecha_subida: cv.fecha_creacion,
+        estado: cv.contenido_extraido ? 'procesado' : 'pendiente',
+        tiene_informe: cv.informes && cv.informes.length > 0,
+        total_informes: cv.informes ? cv.informes.length : 0,
+        habilidades_detectadas: cv.cv_habilidades ? cv.cv_habilidades.length : 0,
+        ultimo_procesamiento: cv.updatedAt,
+        resumen: cv.informes && cv.informes.length > 0 ? {
+          fortalezas: cv.informes[0].fortalezas.length,
+          areas_mejora: cv.informes[0].areas_mejora.length,
+          habilidades: cv.informes[0].habilidades.length
+        } : null
+      }));
+
+      // Estadísticas generales
+      const estadisticas = {
+        total_cvs: count,
+        procesados: cvs.filter(cv => cv.contenido_extraido).length,
+        pendientes: cvs.filter(cv => !cv.contenido_extraido).length,
+        con_informe: cvs.filter(cv => cv.informes && cv.informes.length > 0).length,
+        pagina_actual: parseInt(page),
+        total_paginas: Math.ceil(count / limit),
+        items_por_pagina: parseInt(limit)
+      };
+
+      logger.info('Historial de CVs obtenido', {
+        user_id: alumnoId,
+        total_cvs: count,
+        pagina: page
+      });
+
+      res.json({
+        success: true,
+        historial,
+        estadisticas,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      logger.error("Error obteniendo historial de CVs", error, {
+        user_id: req.user?.id
+      });
+      res.status(500).json({ 
+        success: false,
+        error: error.message 
+      });
+    }
+  }
+
+  // 📈 Estadísticas detalladas del historial
+  static async obtenerEstadisticasHistorial(req, res) {
+    try {
+      const alumnoId = req.user.id;
+
+      // Obtener todos los CVs del usuario
+      const cvs = await CV.findAll({
+        where: { alumnoId },
+        include: [
+          {
+            model: Informe,
+            as: 'informes',
+            required: false
+          },
+          {
+            model: CVHabilidad,
+            as: 'cv_habilidades',
+            required: false,
+            include: [
+              {
+                model: Habilidad,
+                as: 'habilidad',
+                include: [{ model: TipoHabilidad, as: 'tipo' }]
+              }
+            ]
+          }
+        ],
+        order: [['fecha_creacion', 'DESC']]
+      });
+
+      // Calcular estadísticas
+      const estadisticas = {
+        resumen: {
+          total_cvs: cvs.length,
+          procesados: cvs.filter(cv => cv.contenido_extraido).length,
+          pendientes: cvs.filter(cv => !cv.contenido_extraido).length,
+          con_informe: cvs.filter(cv => cv.informes && cv.informes.length > 0).length,
+          porcentaje_procesados: cvs.length > 0 
+            ? Math.round((cvs.filter(cv => cv.contenido_extraido).length / cvs.length) * 100) 
+            : 0
+        },
+        temporales: {
+          ultimo_cv: cvs.length > 0 ? {
+            fecha: cvs[0].fecha_creacion,
+            archivo: cvs[0].archivo.split('/').pop(),
+            procesado: !!cvs[0].contenido_extraido
+          } : null,
+          primer_cv: cvs.length > 0 ? {
+            fecha: cvs[cvs.length - 1].fecha_creacion,
+            archivo: cvs[cvs.length - 1].archivo.split('/').pop()
+          } : null,
+          dias_activo: cvs.length > 0 
+            ? Math.floor((Date.now() - new Date(cvs[cvs.length - 1].fecha_creacion).getTime()) / (1000 * 60 * 60 * 24))
+            : 0
+        },
+        habilidades: this.calcularEstadisticasHabilidades(cvs),
+        actividad: this.calcularActividadPorMes(cvs)
+      };
+
+      logger.info('Estadísticas de historial obtenidas', {
+        user_id: alumnoId,
+        total_cvs: estadisticas.resumen.total_cvs
+      });
+
+      res.json({
+        success: true,
+        estadisticas,
+        timestamp: new Date().toISOString()
+      });
+
+    } catch (error) {
+      logger.error("Error obteniendo estadísticas de historial", error, {
+        user_id: req.user?.id
+      });
+      res.status(500).json({ 
+        success: false,
+        error: error.message 
+      });
+    }
+  }
+
+  // 🔍 Buscar en el historial
+  static async buscarEnHistorial(req, res) {
+    try {
+      const alumnoId = req.user.id;
+      const { q, desde, hasta, estado, tiene_informe } = req.query;
+
+      if (!q && !desde && !hasta && !estado && tiene_informe === undefined) {
+        return res.status(400).json({
+          success: false,
+          error: "Debe proporcionar al menos un criterio de búsqueda"
+        });
+      }
+
+      // Construir filtros
+      const where = { alumnoId };
+
+      // Filtro por fecha
+      if (desde || hasta) {
+        where.fecha_creacion = {};
+        if (desde) where.fecha_creacion[require('sequelize').Op.gte] = new Date(desde);
+        if (hasta) where.fecha_creacion[require('sequelize').Op.lte] = new Date(hasta);
+      }
+
+      // Filtro por estado de procesamiento
+      if (estado === 'procesado') {
+        where.contenido_extraido = { [require('sequelize').Op.not]: null };
+      } else if (estado === 'pendiente') {
+        where.contenido_extraido = null;
+      }
+
+      // Buscar CVs
+      const cvs = await CV.findAll({
+        where,
+        include: [
+          {
+            model: Informe,
+            as: 'informes',
+            required: tiene_informe === 'true' ? true : false
+          },
+          {
+            model: CVHabilidad,
+            as: 'cv_habilidades',
+            include: [
+              {
+                model: Habilidad,
+                as: 'habilidad'
+              }
+            ]
+          }
+        ],
+        order: [['fecha_creacion', 'DESC']]
+      });
+
+      // Filtrar por texto de búsqueda si se proporcionó
+      let resultados = cvs;
+      if (q) {
+        const terminoBusqueda = q.toLowerCase();
+        resultados = cvs.filter(cv => {
+          const nombreArchivo = cv.archivo.toLowerCase();
+          const contenido = cv.contenido_extraido ? cv.contenido_extraido.toLowerCase() : '';
+          const habilidades = cv.cv_habilidades.map(h => h.habilidad.habilidad.toLowerCase()).join(' ');
+          
+          return nombreArchivo.includes(terminoBusqueda) || 
+                 contenido.includes(terminoBusqueda) ||
+                 habilidades.includes(terminoBusqueda);
+        });
+      }
+
+      logger.info('Búsqueda en historial realizada', {
+        user_id: alumnoId,
+        query: q,
+        resultados: resultados.length
+      });
+
+      res.json({
+        success: true,
+        resultados: resultados.map(cv => ({
+          id: cv.id,
+          archivo: cv.archivo.split('/').pop(),
+          fecha: cv.fecha_creacion,
+          procesado: !!cv.contenido_extraido,
+          tiene_informe: cv.informes && cv.informes.length > 0,
+          habilidades: cv.cv_habilidades.length
+        })),
+        total: resultados.length,
+        criterios: { q, desde, hasta, estado, tiene_informe }
+      });
+
+    } catch (error) {
+      logger.error("Error buscando en historial", error, {
+        user_id: req.user?.id
+      });
+      res.status(500).json({ 
+        success: false,
+        error: error.message 
+      });
+    }
+  }
+
+  // 📥 Exportar historial completo
+  static async exportarHistorial(req, res) {
+    try {
+      const alumnoId = req.user.id;
+      const { formato = 'json' } = req.query;
+
+      const alumno = await Alumno.findByPk(alumnoId);
+      
+      const cvs = await CV.findAll({
+        where: { alumnoId },
+        include: [
+          {
+            model: Informe,
+            as: 'informes',
+            include: [
+              { model: InformeFortalezas, as: 'fortalezas' },
+              { model: InformeHabilidades, as: 'habilidades', include: [{ model: Habilidad, as: 'habilidad' }] },
+              { model: InformeAreasMejora, as: 'areas_mejora' }
+            ]
+          },
+          {
+            model: CVHabilidad,
+            as: 'cv_habilidades',
+            include: [
+              {
+                model: Habilidad,
+                as: 'habilidad',
+                include: [{ model: TipoHabilidad, as: 'tipo' }]
+              }
+            ]
+          }
+        ],
+        order: [['fecha_creacion', 'DESC']]
+      });
+
+      const historialCompleto = {
+        usuario: {
+          nombre: alumno.nombre,
+          email: alumno.correo,
+          fecha_registro: alumno.createdAt
+        },
+        estadisticas: {
+          total_cvs: cvs.length,
+          procesados: cvs.filter(cv => cv.contenido_extraido).length,
+          con_informe: cvs.filter(cv => cv.informes && cv.informes.length > 0).length
+        },
+        cvs: cvs.map(cv => ({
+          id: cv.id,
+          archivo: cv.archivo.split('/').pop(),
+          fecha_subida: cv.fecha_creacion,
+          procesado: !!cv.contenido_extraido,
+          habilidades: cv.cv_habilidades.map(h => ({
+            nombre: h.habilidad.habilidad,
+            tipo: h.habilidad.tipo.nombre
+          })),
+          informes: cv.informes.map(inf => ({
+            id: inf.id,
+            fecha: inf.fecha_generacion,
+            resumen: inf.resumen,
+            fortalezas: inf.fortalezas.map(f => f.fortaleza),
+            areas_mejora: inf.areas_mejora.map(a => a.area_mejora)
+          }))
+        })),
+        fecha_exportacion: new Date().toISOString()
+      };
+
+      if (formato === 'json') {
+        res.setHeader('Content-Type', 'application/json');
+        res.setHeader('Content-Disposition', `attachment; filename="historial_cvs_${alumno.nombre.replace(/\s+/g, '_')}_${Date.now()}.json"`);
+        res.send(JSON.stringify(historialCompleto, null, 2));
+      } else {
+        // Para CSV o otros formatos
+        res.status(400).json({
+          success: false,
+          error: "Formato no soportado. Use 'json'"
+        });
+      }
+
+      logger.info('Historial exportado', {
+        user_id: alumnoId,
+        formato,
+        total_cvs: cvs.length
+      });
+
+    } catch (error) {
+      logger.error("Error exportando historial", error, {
+        user_id: req.user?.id
+      });
+      res.status(500).json({ 
+        success: false,
+        error: error.message 
+      });
+    }
+  }
+
+  // 🔧 Helpers para estadísticas
+  static calcularEstadisticasHabilidades(cvs) {
+    const habilidadesMap = new Map();
+    const tiposMap = new Map();
+
+    cvs.forEach(cv => {
+      if (cv.cv_habilidades) {
+        cv.cv_habilidades.forEach(cvHab => {
+          const nombre = cvHab.habilidad.habilidad;
+          const tipo = cvHab.habilidad.tipo.nombre;
+          
+          habilidadesMap.set(nombre, (habilidadesMap.get(nombre) || 0) + 1);
+          tiposMap.set(tipo, (tiposMap.get(tipo) || 0) + 1);
+        });
+      }
+    });
+
+    const topHabilidades = Array.from(habilidadesMap.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 10)
+      .map(([habilidad, frecuencia]) => ({ habilidad, frecuencia }));
+
+    return {
+      total_unicas: habilidadesMap.size,
+      distribucion_tipos: Object.fromEntries(tiposMap),
+      top_10: topHabilidades
+    };
+  }
+
+  static calcularActividadPorMes(cvs) {
+    const actividadMap = new Map();
+
+    cvs.forEach(cv => {
+      const mes = new Date(cv.fecha_creacion).toISOString().slice(0, 7); // YYYY-MM
+      actividadMap.set(mes, (actividadMap.get(mes) || 0) + 1);
+    });
+
+    return Array.from(actividadMap.entries())
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([mes, cantidad]) => ({ mes, cantidad }));
+  }
+
+  // 📋 Comparar dos CVs
+  static async compararCVs(req, res) {
+    try {
+      const alumnoId = req.user.id;
+      const { cv1Id, cv2Id } = req.query;
+
+      if (!cv1Id || !cv2Id) {
+        return res.status(400).json({
+          success: false,
+          error: "Debe proporcionar dos IDs de CV para comparar"
+        });
+      }
+
+      const [cv1, cv2] = await Promise.all([
+        CV.findOne({
+          where: { id: cv1Id, alumnoId },
+          include: [
+            {
+              model: CVHabilidad,
+              as: 'cv_habilidades',
+              include: [
+                {
+                  model: Habilidad,
+                  as: 'habilidad',
+                  include: [{ model: TipoHabilidad, as: 'tipo' }]
+                }
+              ]
+            },
+            {
+              model: Informe,
+              as: 'informes'
+            }
+          ]
+        }),
+        CV.findOne({
+          where: { id: cv2Id, alumnoId },
+          include: [
+            {
+              model: CVHabilidad,
+              as: 'cv_habilidades',
+              include: [
+                {
+                  model: Habilidad,
+                  as: 'habilidad',
+                  include: [{ model: TipoHabilidad, as: 'tipo' }]
+                }
+              ]
+            },
+            {
+              model: Informe,
+              as: 'informes'
+            }
+          ]
+        })
+      ]);
+
+      if (!cv1 || !cv2) {
+        return res.status(404).json({
+          success: false,
+          error: "Uno o ambos CVs no fueron encontrados"
+        });
+      }
+
+      // Comparar habilidades
+      const habilidades1 = new Set(cv1.cv_habilidades.map(h => h.habilidad.habilidad));
+      const habilidades2 = new Set(cv2.cv_habilidades.map(h => h.habilidad.habilidad));
+
+      const comunes = [...habilidades1].filter(h => habilidades2.has(h));
+      const solo_cv1 = [...habilidades1].filter(h => !habilidades2.has(h));
+      const solo_cv2 = [...habilidades2].filter(h => !habilidades1.has(h));
+
+      const comparacion = {
+        cv1: {
+          id: cv1.id,
+          archivo: cv1.archivo.split('/').pop(),
+          fecha: cv1.fecha_creacion,
+          habilidades_total: habilidades1.size,
+          tiene_informe: cv1.informes && cv1.informes.length > 0
+        },
+        cv2: {
+          id: cv2.id,
+          archivo: cv2.archivo.split('/').pop(),
+          fecha: cv2.fecha_creacion,
+          habilidades_total: habilidades2.size,
+          tiene_informe: cv2.informes && cv2.informes.length > 0
+        },
+        habilidades: {
+          comunes: comunes,
+          total_comunes: comunes.length,
+          solo_cv1: solo_cv1,
+          solo_cv2: solo_cv2,
+          similitud: habilidades1.size > 0 || habilidades2.size > 0
+            ? Math.round((comunes.length / Math.max(habilidades1.size, habilidades2.size)) * 100)
+            : 0
+        }
+      };
+
+      logger.info('CVs comparados', {
+        user_id: alumnoId,
+        cv1_id: cv1Id,
+        cv2_id: cv2Id,
+        similitud: comparacion.habilidades.similitud
+      });
+
+      res.json({
+        success: true,
+        comparacion
+      });
+
+    } catch (error) {
+      logger.error("Error comparando CVs", error, {
+        user_id: req.user?.id
+      });
+      res.status(500).json({ 
+        success: false,
+        error: error.message 
+      });
+    }
+  }
 }
+
+
 
 module.exports = CVController;
