@@ -9,7 +9,7 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Función para crear access y refresh tokens
 const generarTokens = async (alumnoId, correo, req) => {
-  // 1. Generar Access Token
+  // 1. Generar Access Token (15 minutos)
   const accessToken = jwt.sign(
     { 
       id: alumnoId, 
@@ -23,7 +23,7 @@ const generarTokens = async (alumnoId, correo, req) => {
     }
   );
 
-  // 2. Generar Refresh Token
+  // 2. Generar Refresh Token (30 DÍAS en lugar de 7) 👈 CAMBIO AQUÍ
   const refreshToken = jwt.sign(
     { 
       id: alumnoId,
@@ -31,7 +31,7 @@ const generarTokens = async (alumnoId, correo, req) => {
     },
     process.env.JWT_SECRET,
     { 
-      expiresIn: "7d",
+      expiresIn: "30d", // 👈 CAMBIADO DE "7d" A "30d"
       jwtid: utilsService.generateUniqueId()
     }
   );
@@ -44,8 +44,8 @@ const generarTokens = async (alumnoId, correo, req) => {
     mobile: req.headers['sec-ch-ua-mobile']
   };
 
-  // 4. Calcular fecha de expiración
-  const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000); // 7 días
+  // 4. Calcular fecha de expiración (30 días) 👈 CAMBIO AQUÍ
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 👈 CAMBIADO
 
   // 5. Guardar token en BD
   await Token.create({ 
