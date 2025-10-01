@@ -2,26 +2,46 @@ const express = require("express");
 const router = express.Router();
 const EntrevistaController = require("../controllers/EntrevistaController");
 const authMiddleware = require("../middlewares/authMiddleware");
+const { simpleRateLimit } = require("../middlewares/validationMiddleware");
 
 // 🔒 Todas las rutas requieren autenticación
 router.use(authMiddleware);
 
-// 🎯 RF-104: Iniciar nueva entrevista
-router.post("/iniciar", EntrevistaController.iniciarEntrevista);
+// 🎯 Iniciar nueva entrevista con IA
+router.post("/iniciar", 
+  simpleRateLimit(10, 60 * 1000), // 10 por minuto
+  EntrevistaController.iniciarEntrevista
+);
 
-// 💬 RF-104: Responder pregunta de entrevista
-router.post("/:entrevistaId/responder", EntrevistaController.responderPregunta);
+// 💬 Enviar mensaje en la entrevista (chat)
+router.post("/:entrevistaId/mensaje", 
+  simpleRateLimit(30, 60 * 1000), // 30 mensajes por minuto
+  EntrevistaController.enviarMensaje
+);
 
-// 🧠 RF-105: Procesar respuesta con IA (generar retroalimentación)
-router.post("/respuestas/:respuestaId/procesar", EntrevistaController.procesarRespuesta);
+// 📊 Finalizar entrevista y obtener evaluación
+router.post("/:entrevistaId/finalizar", 
+  EntrevistaController.finalizarEntrevista
+);
 
-// 📊 Finalizar entrevista y obtener resultado final
-router.post("/:entrevistaId/finalizar", EntrevistaController.finalizarEntrevista);
+// 🗑️ Abandonar/Cancelar entrevista
+router.post("/:entrevistaId/abandonar",
+  EntrevistaController.abandonarEntrevista
+);
 
-// 📋 RF-108: Obtener historial de entrevistas del alumno
-router.get("/historial", EntrevistaController.obtenerHistorial);
+// 📋 Obtener historial completo de una entrevista específica
+router.get("/:entrevistaId/historial", 
+  EntrevistaController.obtenerHistorial
+);
 
-// 🎲 Obtener pregunta aleatoria (para testing)
-router.get("/pregunta-aleatoria", EntrevistaController.obtenerPreguntaAleatoria);
+// 📋 Obtener todas las entrevistas del alumno
+router.get("/", 
+  EntrevistaController.obtenerTodasEntrevistas
+);
+
+// 📊 Obtener estadísticas de entrevistas
+router.get("/estadisticas/resumen",
+  EntrevistaController.obtenerEstadisticas
+);
 
 module.exports = router;

@@ -1,6 +1,5 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const Alumno = require("./Alumno");
 
 const Entrevista = sequelize.define("Entrevista", {
   fecha: {
@@ -11,37 +10,56 @@ const Entrevista = sequelize.define("Entrevista", {
   promedio_puntuacion: {
     type: DataTypes.FLOAT,
     allowNull: true,
-    comment: "Guardamos el promedio de puntuaciones"
+    comment: "Promedio final de la entrevista"
   },
   resultado_final: {
     type: DataTypes.STRING(255),
     allowNull: true,
-    comment: "Guardamos la evaluación final"
+    comment: "Evaluación final: Excelente, Bueno, Regular, etc."
+  },
+  dificultad: {
+    type: DataTypes.ENUM('basica', 'intermedia', 'avanzada'),
+    allowNull: false,
+    defaultValue: 'intermedia'
+  },
+  estado: {
+    type: DataTypes.ENUM('iniciada', 'en_progreso', 'completada', 'abandonada'),
+    allowNull: false,
+    defaultValue: 'iniciada'
+  },
+  historial_conversacion: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  evaluacion_final_ia: {
+    type: DataTypes.TEXT,
+    allowNull: true
+  },
+  fortalezas_detectadas: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  areas_mejora_detectadas: {
+    type: DataTypes.JSON,
+    allowNull: true
+  },
+  duracion_minutos: {
+    type: DataTypes.INTEGER,
+    allowNull: true
   },
   alumnoId: {
     type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: Alumno,
-      key: 'id'
-    }
+    allowNull: false
+  },
+  carreraId: {
+    type: DataTypes.INTEGER,
+    allowNull: false
   }
 }, {
   sequelize,
   modelName: "Entrevista",
   tableName: "entrevistas",
-  timestamps: false // Ya tenemos fecha manualmente
-});
-
-// Asociaciones
-Entrevista.belongsTo(Alumno, {
-  foreignKey: 'alumnoId',
-  as: 'alumno'
-});
-
-Alumno.hasMany(Entrevista, {
-  foreignKey: 'alumnoId',
-  as: 'entrevistas'
+  timestamps: true
 });
 
 module.exports = Entrevista;

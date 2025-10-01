@@ -1,4 +1,3 @@
-// models/index.js
 const sequelize = require("../config/database");
 
 // Importar modelos en orden de dependencias
@@ -12,13 +11,66 @@ const Informe = require("./Informe");
 const InformeFortalezas = require("./InformeFortalezas");
 const InformeHabilidades = require("./InformeHabilidades");
 const InformeAreasMejora = require("./InformeAreasMejora");
+const Carrera = require("./Carrera");
 const PreguntaEntrevista = require("./PreguntaEntrevista");
 const Entrevista = require("./Entrevista");
 const RespuestaEntrevista = require("./RespuestaEntrevista");
 const HistorialEntrevista = require("./HistorialEntrevista");
 
-// ===== CONFIGURACIÓN DE ASOCIACIONES =====
-// (Las asociaciones ya están definidas en cada modelo individual)
+// ===== ASOCIACIONES =====
+
+// Asociaciones de Entrevista
+Entrevista.belongsTo(Alumno, {
+  foreignKey: 'alumnoId',
+  as: 'alumno'
+});
+
+Entrevista.belongsTo(Carrera, {
+  foreignKey: 'carreraId',
+  as: 'carrera'
+});
+
+Alumno.hasMany(Entrevista, {
+  foreignKey: 'alumnoId',
+  as: 'entrevistas'
+});
+
+Carrera.hasMany(Entrevista, {
+  foreignKey: 'carreraId',
+  as: 'entrevistas'
+});
+
+// Asociaciones de RespuestaEntrevista
+RespuestaEntrevista.belongsTo(Entrevista, {
+  foreignKey: 'entrevistaId',
+  as: 'entrevista'
+});
+
+RespuestaEntrevista.belongsTo(PreguntaEntrevista, {
+  foreignKey: 'preguntaId',
+  as: 'pregunta'
+});
+
+Entrevista.hasMany(RespuestaEntrevista, {
+  foreignKey: 'entrevistaId',
+  as: 'respuestas'
+});
+
+PreguntaEntrevista.hasMany(RespuestaEntrevista, {
+  foreignKey: 'preguntaId',
+  as: 'respuestas'
+});
+
+// Asociaciones de HistorialEntrevista
+HistorialEntrevista.belongsTo(Entrevista, {
+  foreignKey: 'entrevistaId',
+  as: 'entrevista'
+});
+
+Entrevista.hasMany(HistorialEntrevista, {
+  foreignKey: 'entrevistaId',
+  as: 'historial'
+});
 
 // Función para sincronizar todos los modelos
 const syncModels = async (options = {}) => {
@@ -54,7 +106,8 @@ module.exports = {
   InformeHabilidades,
   InformeAreasMejora,
   
-  // Modelos de entrevistas
+  // Modelos de carreras y entrevistas
+  Carrera,
   PreguntaEntrevista,
   Entrevista,
   RespuestaEntrevista,

@@ -9,7 +9,6 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Función para crear access y refresh tokens
 const generarTokens = async (alumnoId, correo, req) => {
-  // 1. Generar Access Token (15 minutos)
   const accessToken = jwt.sign(
     { 
       id: alumnoId, 
@@ -23,7 +22,6 @@ const generarTokens = async (alumnoId, correo, req) => {
     }
   );
 
-  // 2. Generar Refresh Token (30 DÍAS en lugar de 7) 👈 CAMBIO AQUÍ
   const refreshToken = jwt.sign(
     { 
       id: alumnoId,
@@ -31,12 +29,11 @@ const generarTokens = async (alumnoId, correo, req) => {
     },
     process.env.JWT_SECRET,
     { 
-      expiresIn: "30d", // 👈 CAMBIADO DE "7d" A "30d"
+      expiresIn: "30d",
       jwtid: utilsService.generateUniqueId()
     }
   );
 
-  // 3. Recopilar información del dispositivo
   const deviceInfo = {
     userAgent: req.headers['user-agent'],
     ip: req.ip,
@@ -44,10 +41,8 @@ const generarTokens = async (alumnoId, correo, req) => {
     mobile: req.headers['sec-ch-ua-mobile']
   };
 
-  // 4. Calcular fecha de expiración (30 días) 👈 CAMBIO AQUÍ
-  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000); // 👈 CAMBIADO
+  const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
-  // 5. Guardar token en BD
   await Token.create({ 
     alumnoId, 
     refreshToken,
@@ -57,7 +52,6 @@ const generarTokens = async (alumnoId, correo, req) => {
     lastUsedAt: new Date()
   });
 
-  // 6. Limpiar tokens antiguos o revocados del mismo usuario
   await limpiarTokensAntiguos(alumnoId);
 
   return { 
@@ -67,279 +61,11 @@ const generarTokens = async (alumnoId, correo, req) => {
   };
 };
 
-//registrar
-
-exports.register = async (req, res) => {
-  try {
-    const { nombre, correo, contrasena } = req.body;
-
-    const existe = await Alumno.findOne({ where: { correo } });
-    if (existe) return res.status(400).json({ error: "Correo ya registrado" });
-
-    const alumno = await Alumno.create({ nombre, correo, contrasena });
-
-    res.json({ message: "Alumno registrado con éxito", alumno });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-};
-
-//loginNormal
-exports.login = async (req, res) => {
-  try {
-    // 1. Validar credenciales de cliente
-    const { correo, contrasena, client_id, client_secret } = req.body;
-
-    if (!client_id || !client_secret) {
-      return res.status(401).json({ 
-        error: "Credenciales de cliente requeridas",
-        code: "MISSING_CLIENT_CREDENTIALS"
-      });
-    }
-
-    if (client_id !== process.env.CLIENT_ID || client_secret !== process.env.CLIENT_SECRET) {
-      logger.warn('Intento de acceso con credenciales de cliente inválidas', {
-        provided_client_id: client_id,
-        ip: req.ip
-      });
-      return res.status(401).json({ 
-        error: "Cliente no autorizado",
-        code: "INVALID_CLIENT"
-      });
-    }
-
-    // 2. Validar credenciales de usuario
-    const alumno = await Alumno.findOne({ 
-      where: { correo },
-      attributes: ['id', 'correo', 'contrasena', 'nombre', 'fecha_ultimo_acceso']
-    });
-
-    // 3. Manejo de usuario no encontrado
-    if (!alumno) {
-      logger.warn('Intento de acceso con correo no registrado', {
-        correo,
-        ip: req.ip
-      });
-      return res.status(404).json({ 
-        error: "Usuario no encontrado",
-        code: "USER_NOT_FOUND"
-      });
-    }
-/*
-    // 4. Verificar estado de la cuenta
-    if (alumno.estado !== 'activo') {
-      logger.warn('Intento de acceso a cuenta inactiva', {
-        correo,
-        estado: alumno.estado,
-        ip: req.ip
-      });
-      return res.status(403).json({ 
-        error: "Cuenta inactiva",
-        code: "INACTIVE_ACCOUNT"
-      });
-    }
-      
-    // 5. Verificar bloqueo por intentos fallidos
-    if (alumno.intentos_fallidos >= 5) {
-      const ultimoIntento = new Date(alumno.fecha_ultimo_acceso);
-      const tiempoEspera = 15 * 60 * 1000; // 15 minutos
-      if ((Date.now() - ultimoIntento) < tiempoEspera) {
-        return res.status(429).json({
-          error: "Cuenta bloqueada temporalmente",
-          code: "ACCOUNT_LOCKED",
-          unlock_time: new Date(ultimoIntento.getTime() + tiempoEspera)
-        });
-      } else {
-        // Resetear intentos después del tiempo de espera
-        alumno.intentos_fallidos = 0;
-      }
-    }
-*/
-    // 6. Validar contraseña
-    const valido = await alumno.checkPassword(contrasena);
-    if (!valido) {
-      // Incrementar contador de intentos fallidos
-      alumno.intentos_fallidos = (alumno.intentos_fallidos || 0) + 1;
-      alumno.fecha_ultimo_acceso = new Date();
-      await alumno.save();
-
-      logger.warn('Intento de acceso fallido', {
-        correo,
-        intentos_fallidos: alumno.intentos_fallidos,
-        ip: req.ip
-      });
-
-      return res.status(401).json({ 
-        error: "Credenciales inválidas",
-        code: "INVALID_CREDENTIALS",
-        attempts_remaining: 5 - alumno.intentos_fallidos
-      });
-    }
-
-    // 7. Actualizar estado del alumno
-    alumno.intentos_fallidos = 0;
-    alumno.fecha_ultimo_acceso = new Date();
-    await alumno.save();
-
-    // 8. Generar tokens
-    const { accessToken, refreshToken, expiresAt } = await generarTokens(alumno.id, alumno.correo, req);
-
-    // 9. Log de acceso exitoso
-    logger.info('Login exitoso', {
-      alumno_id: alumno.id,
-      correo: alumno.correo,
-      ip: req.ip,
-      user_agent: req.headers['user-agent']
-    });
-
-    // 10. Respuesta exitosa
-    res.json({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      token_type: "Bearer",
-      expires_in: 900, // 15 min
-      refresh_expires_at: expiresAt,
-      user: {
-        id: alumno.id,
-        nombre: alumno.nombre,
-        correo: alumno.correo,
-        ultimo_acceso: alumno.fecha_ultimo_acceso
-      }
-    });
-
-  } catch (error) {
-    logger.error('Error en login', error, {
-      correo: req.body?.correo,
-      ip: req.ip
-    });
-    res.status(500).json({ 
-      error: "Error de autenticación",
-      code: "AUTH_ERROR"
-    });
-  }
-};
-
-//LoginGoogle
-
-exports.googleLogin = async (req, res) => {
-  try {
-    const { credential } = req.body;  // ← Cambiar de 'token' a 'credential'
-
-    // Validar que se envió el credential
-    if (!credential) {
-      return res.status(400).json({ 
-        error: "Credential de Google requerido",
-        code: "MISSING_GOOGLE_CREDENTIAL"
-      });
-    }
-
-    logger.info('Intento de login con Google', {
-      ip: req.ip,
-      user_agent: req.headers['user-agent']
-    });
-
-    // Verificar el token con Google
-    const ticket = await client.verifyIdToken({
-      idToken: credential,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
-
-    const payload = ticket.getPayload();
-    const { email, name, picture, email_verified, sub: googleId } = payload;
-
-    logger.info('Token de Google verificado', {
-      email,
-      email_verified
-    });
-
-    // Validar que el email esté verificado
-    if (!email_verified) {
-      return res.status(400).json({
-        error: "El email de Google no está verificado",
-        code: "EMAIL_NOT_VERIFIED"
-      });
-    }
-
-    // Buscar o crear usuario
-    let alumno = await Alumno.findOne({ where: { correo: email } });
-
-    if (!alumno) {
-      // Crear nuevo usuario con datos de Google
-      alumno = await Alumno.create({
-        nombre: name || email.split('@')[0],
-        correo: email,
-        contrasena: Math.random().toString(36).slice(-8), // Contraseña aleatoria
-        estado: 'activo',
-        intentos_fallidos: 0
-      });
-
-      logger.userRegistered(alumno.id, email, 'google');
-    }
-
-    // Actualizar último acceso
-    alumno.fecha_ultimo_acceso = new Date();
-    await alumno.save();
-
-    // Generar tokens
-    const { accessToken, refreshToken, expiresAt } = await generarTokens(
-      alumno.id, 
-      alumno.correo, 
-      req
-    );
-
-    // Log de acceso exitoso
-    logger.userLogin(alumno.id, email, 'google');
-
-    // Respuesta exitosa
-    res.json({
-      access_token: accessToken,
-      refresh_token: refreshToken,
-      token_type: "Bearer",
-      expires_in: 900, // 15 minutos
-      refresh_expires_at: expiresAt,
-      user: {
-        id: alumno.id,
-        nombre: alumno.nombre,
-        correo: alumno.correo,
-        picture: picture, // Incluir foto de perfil de Google
-        ultimo_acceso: alumno.fecha_ultimo_acceso,
-        login_method: 'google'
-      }
-    });
-
-  } catch (error) {
-    // Manejo de errores específicos de Google
-    if (error.message.includes('Invalid token') || error.message.includes('Token used too late')) {
-      logger.warn('Token de Google inválido', {
-        error: error.message,
-        ip: req.ip
-      });
-      return res.status(401).json({
-        error: "Token de Google inválido o expirado",
-        code: "INVALID_GOOGLE_TOKEN"
-      });
-    }
-
-    // Error general
-    logger.error('Error en login con Google', error, {
-      ip: req.ip,
-      user_agent: req.headers['user-agent']
-    });
-
-    res.status(500).json({ 
-      error: "Error en autenticación con Google",
-      code: "GOOGLE_AUTH_ERROR",
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
-    });
-  }
-};
-
 // Función para limpiar tokens antiguos o revocados
 const limpiarTokensAntiguos = async (alumnoId) => {
   const ahora = new Date();
   
   try {
-    // Eliminar tokens expirados o revocados
     await Token.destroy({
       where: {
         alumnoId,
@@ -350,7 +76,6 @@ const limpiarTokensAntiguos = async (alumnoId) => {
       }
     });
 
-    // Mantener solo los últimos 5 tokens activos por usuario
     const tokensActivos = await Token.findAll({
       where: {
         alumnoId,
@@ -372,7 +97,221 @@ const limpiarTokensAntiguos = async (alumnoId) => {
   }
 };
 
-// 🔹 Logout (invalida refresh token)
+// ========== EXPORTS ==========
+
+exports.register = async (req, res) => {
+  try {
+    const { nombre, correo, contrasena } = req.body;
+
+    const existe = await Alumno.findOne({ where: { correo } });
+    if (existe) return res.status(400).json({ error: "Correo ya registrado" });
+
+    const alumno = await Alumno.create({ nombre, correo, contrasena });
+
+    res.json({ message: "Alumno registrado con éxito", alumno });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+exports.login = async (req, res) => {
+  try {
+    const { correo, contrasena, client_id, client_secret } = req.body;
+
+    if (!client_id || !client_secret) {
+      return res.status(401).json({ 
+        error: "Credenciales de cliente requeridas",
+        code: "MISSING_CLIENT_CREDENTIALS"
+      });
+    }
+
+    if (client_id !== process.env.CLIENT_ID || client_secret !== process.env.CLIENT_SECRET) {
+      logger.warn('Intento de acceso con credenciales de cliente inválidas', {
+        provided_client_id: client_id,
+        ip: req.ip
+      });
+      return res.status(401).json({ 
+        error: "Cliente no autorizado",
+        code: "INVALID_CLIENT"
+      });
+    }
+
+    const alumno = await Alumno.findOne({ 
+      where: { correo },
+      attributes: ['id', 'correo', 'contrasena', 'nombre', 'fecha_ultimo_acceso']
+    });
+
+    if (!alumno) {
+      logger.warn('Intento de acceso con correo no registrado', {
+        correo,
+        ip: req.ip
+      });
+      return res.status(404).json({ 
+        error: "Usuario no encontrado",
+        code: "USER_NOT_FOUND"
+      });
+    }
+
+    const valido = await alumno.checkPassword(contrasena);
+    if (!valido) {
+      alumno.intentos_fallidos = (alumno.intentos_fallidos || 0) + 1;
+      alumno.fecha_ultimo_acceso = new Date();
+      await alumno.save();
+
+      logger.warn('Intento de acceso fallido', {
+        correo,
+        intentos_fallidos: alumno.intentos_fallidos,
+        ip: req.ip
+      });
+
+      return res.status(401).json({ 
+        error: "Credenciales inválidas",
+        code: "INVALID_CREDENTIALS",
+        attempts_remaining: 5 - alumno.intentos_fallidos
+      });
+    }
+
+    alumno.intentos_fallidos = 0;
+    alumno.fecha_ultimo_acceso = new Date();
+    await alumno.save();
+
+    const { accessToken, refreshToken, expiresAt } = await generarTokens(alumno.id, alumno.correo, req);
+
+    logger.info('Login exitoso', {
+      alumno_id: alumno.id,
+      correo: alumno.correo,
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+
+    res.json({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: "Bearer",
+      expires_in: 900,
+      refresh_expires_at: expiresAt,
+      user: {
+        id: alumno.id,
+        nombre: alumno.nombre,
+        correo: alumno.correo,
+        ultimo_acceso: alumno.fecha_ultimo_acceso
+      }
+    });
+
+  } catch (error) {
+    logger.error('Error en login', error, {
+      correo: req.body?.correo,
+      ip: req.ip
+    });
+    res.status(500).json({ 
+      error: "Error de autenticación",
+      code: "AUTH_ERROR"
+    });
+  }
+};
+
+exports.googleLogin = async (req, res) => {
+  try {
+    const { credential } = req.body;
+
+    if (!credential) {
+      return res.status(400).json({ 
+        error: "Credential de Google requerido",
+        code: "MISSING_GOOGLE_CREDENTIAL"
+      });
+    }
+
+    logger.info('Intento de login con Google', {
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+
+    const ticket = await client.verifyIdToken({
+      idToken: credential,
+      audience: process.env.GOOGLE_CLIENT_ID,
+    });
+
+    const payload = ticket.getPayload();
+    const { email, name, picture, email_verified } = payload;
+
+    logger.info('Token de Google verificado', {
+      email,
+      email_verified
+    });
+
+    if (!email_verified) {
+      return res.status(400).json({
+        error: "El email de Google no está verificado",
+        code: "EMAIL_NOT_VERIFIED"
+      });
+    }
+
+    let alumno = await Alumno.findOne({ where: { correo: email } });
+
+    if (!alumno) {
+      alumno = await Alumno.create({
+        nombre: name || email.split('@')[0],
+        correo: email,
+        contrasena: Math.random().toString(36).slice(-8),
+        estado: 'activo',
+        intentos_fallidos: 0
+      });
+
+      logger.userRegistered(alumno.id, email, 'google');
+    }
+
+    alumno.fecha_ultimo_acceso = new Date();
+    await alumno.save();
+
+    const { accessToken, refreshToken, expiresAt } = await generarTokens(
+      alumno.id, 
+      alumno.correo, 
+      req
+    );
+
+    logger.userLogin(alumno.id, email, 'google');
+
+    res.json({
+      access_token: accessToken,
+      refresh_token: refreshToken,
+      token_type: "Bearer",
+      expires_in: 900,
+      refresh_expires_at: expiresAt,
+      user: {
+        id: alumno.id,
+        nombre: alumno.nombre,
+        correo: alumno.correo,
+        picture: picture,
+        ultimo_acceso: alumno.fecha_ultimo_acceso,
+        login_method: 'google'
+      }
+    });
+
+  } catch (error) {
+    if (error.message.includes('Invalid token') || error.message.includes('Token used too late')) {
+      logger.warn('Token de Google inválido', {
+        error: error.message,
+        ip: req.ip
+      });
+      return res.status(401).json({
+        error: "Token de Google inválido o expirado",
+        code: "INVALID_GOOGLE_TOKEN"
+      });
+    }
+
+    logger.error('Error en login con Google', error, {
+      ip: req.ip,
+      user_agent: req.headers['user-agent']
+    });
+
+    res.status(500).json({ 
+      error: "Error en autenticación con Google",
+      code: "GOOGLE_AUTH_ERROR",
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
+  }
+};
+
 exports.logout = async (req, res) => {
   try {
     const { refresh_token } = req.body;
@@ -383,7 +322,6 @@ exports.logout = async (req, res) => {
       });
     }
 
-    // Buscar y marcar token como revocado
     const token = await Token.findOne({ 
       where: { refreshToken: refresh_token } 
     });
@@ -395,12 +333,10 @@ exports.logout = async (req, res) => {
       });
     }
 
-    // Actualizar token
     token.isRevoked = true;
     token.lastUsedAt = new Date();
     await token.save();
 
-    // Log de cierre de sesión
     logger.info('Sesión cerrada exitosamente', {
       alumnoId: token.alumnoId,
       deviceInfo: token.deviceInfo,
@@ -422,10 +358,9 @@ exports.logout = async (req, res) => {
     });
   }
 };
-// 🔹 Refrescar access token
+
 exports.refreshToken = async (req, res) => {
   try {
-    // 1. Validar existencia del token
     const { refresh_token } = req.body;
     if (!refresh_token) {
       return res.status(400).json({ 
@@ -434,7 +369,6 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    // 2. Buscar token en la base de datos
     const tokenDB = await Token.findOne({ 
       where: { refreshToken: refresh_token },
       include: [{ 
@@ -443,7 +377,6 @@ exports.refreshToken = async (req, res) => {
       }]
     });
 
-    // 3. Validar existencia y estado del token
     if (!tokenDB) {
       return res.status(403).json({ 
         error: "Refresh token inválido",
@@ -451,7 +384,6 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    // 4. Verificar si el token está revocado
     if (tokenDB.isRevoked) {
       return res.status(403).json({ 
         error: "Token revocado",
@@ -459,7 +391,6 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    // 5. Verificar expiración
     if (new Date() > tokenDB.expiresAt) {
       return res.status(403).json({ 
         error: "Token expirado",
@@ -467,7 +398,6 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    // 6. Verificar estado del alumno
     if (tokenDB.Alumno.estado !== 'activo') {
       return res.status(403).json({ 
         error: "Cuenta de usuario inactiva",
@@ -475,7 +405,6 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    // 7. Verificar firma del token
     const decoded = await new Promise((resolve, reject) => {
       jwt.verify(refresh_token, process.env.JWT_SECRET, (err, decoded) => {
         if (err) reject(err);
@@ -483,7 +412,6 @@ exports.refreshToken = async (req, res) => {
       });
     });
 
-    // 8. Generar nuevo access token
     const newAccessToken = jwt.sign(
       { 
         id: decoded.id,
@@ -497,18 +425,15 @@ exports.refreshToken = async (req, res) => {
       }
     );
 
-    // 9. Actualizar último uso del refresh token
     tokenDB.lastUsedAt = new Date();
     await tokenDB.save();
 
-    // 10. Log de renovación exitosa
     logger.info('Token renovado exitosamente', {
       alumnoId: tokenDB.alumnoId,
       deviceInfo: tokenDB.deviceInfo,
       lastUsed: tokenDB.lastUsedAt
     });
 
-    // 11. Enviar respuesta
     return res.json({
       access_token: newAccessToken,
       token_type: "Bearer",
@@ -520,7 +445,6 @@ exports.refreshToken = async (req, res) => {
     });
 
   } catch (error) {
-    // 12. Manejo de errores específicos
     if (error.name === 'JsonWebTokenError') {
       return res.status(403).json({ 
         error: "Token malformado",
@@ -534,15 +458,146 @@ exports.refreshToken = async (req, res) => {
       });
     }
 
-    // Log del error
     logger.error('Error en refresh token', error, {
-      token_provided: !!refresh_token
+      token_provided: !!req.body.refresh_token
     });
 
-    // Respuesta genérica de error
     res.status(500).json({ 
       error: "Error renovando token",
       code: "REFRESH_ERROR"
     });
+  }
+};
+
+exports.getProfile = async (req, res) => {
+  try {
+    const alumnoId = req.user.id;
+
+    const alumno = await Alumno.findByPk(alumnoId, {
+      attributes: ['id', 'nombre', 'correo', 'fecha_ultimo_acceso', 'estado', 'createdAt']
+    });
+
+    if (!alumno) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    res.json({
+      success: true,
+      profile: {
+        id: alumno.id,
+        nombre: alumno.nombre,
+        correo: alumno.correo,
+        fecha_ultimo_acceso: alumno.fecha_ultimo_acceso,
+        fecha_registro: alumno.createdAt,
+        estado: alumno.estado
+      }
+    });
+  } catch (error) {
+    console.error('Error obteniendo perfil:', error);
+    res.status(500).json({ error: 'Error obteniendo perfil' });
+  }
+};
+
+exports.updateProfile = async (req, res) => {
+  try {
+    const alumnoId = req.user.id;
+    const { nombre } = req.body;
+
+    if (!nombre || nombre.trim().length < 2) {
+      return res.status(400).json({ error: 'El nombre debe tener al menos 2 caracteres' });
+    }
+
+    const alumno = await Alumno.findByPk(alumnoId);
+    if (!alumno) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    alumno.nombre = nombre.trim();
+    await alumno.save();
+
+    res.json({
+      success: true,
+      message: 'Perfil actualizado correctamente',
+      profile: {
+        id: alumno.id,
+        nombre: alumno.nombre,
+        correo: alumno.correo
+      }
+    });
+  } catch (error) {
+    console.error('Error actualizando perfil:', error);
+    res.status(500).json({ error: 'Error actualizando perfil' });
+  }
+};
+
+exports.getUserStats = async (req, res) => {
+  try {
+    const alumnoId = req.user.id;
+    const { CV, Entrevista, Informe } = require('../models');
+
+    const [totalCVs, totalEntrevistas, totalInformes, cvsProcessed] = await Promise.all([
+      CV.count({ where: { alumnoId } }),
+      Entrevista.count({ where: { alumnoId } }),
+      Informe.count({
+        include: [{ model: CV, as: 'cv', where: { alumnoId } }]
+      }),
+      CV.count({
+        where: { 
+          alumnoId,
+          contenido_extraido: { [Op.not]: null }
+        }
+      })
+    ]);
+
+    res.json({
+      success: true,
+      stats: {
+        total_cvs: totalCVs,
+        cvs_procesados: cvsProcessed,
+        cvs_pendientes: totalCVs - cvsProcessed,
+        total_entrevistas: totalEntrevistas,
+        total_informes: totalInformes,
+        progreso_analisis: totalCVs > 0 ? Math.round((cvsProcessed / totalCVs) * 100) : 0
+      }
+    });
+  } catch (error) {
+    console.error('Error obteniendo estadísticas:', error);
+    res.status(500).json({ error: 'Error obteniendo estadísticas' });
+  }
+};
+
+exports.changePassword = async (req, res) => {
+  try {
+    const alumnoId = req.user.id;
+    const { current_password, new_password } = req.body;
+
+    if (!current_password || !new_password) {
+      return res.status(400).json({ error: 'Se requiere contraseña actual y nueva' });
+    }
+
+    if (new_password.length < 6) {
+      return res.status(400).json({ error: 'La nueva contraseña debe tener al menos 6 caracteres' });
+    }
+
+    const alumno = await Alumno.findByPk(alumnoId);
+    if (!alumno) {
+      return res.status(404).json({ error: 'Usuario no encontrado' });
+    }
+
+    const isValid = await alumno.checkPassword(current_password);
+    if (!isValid) {
+      return res.status(401).json({ error: 'Contraseña actual incorrecta' });
+    }
+
+    alumno.contrasena = new_password;
+    await alumno.save();
+
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada correctamente'
+    });
+  } catch (error) {
+    console.error('Error cambiando contraseña:', error);
+    res.status(500).json({ error: 'Error cambiando contraseña' });
   }
 };

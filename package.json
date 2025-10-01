@@ -8,7 +8,8 @@
     "start": "node src/server.js",
     "test-services": "node -e \"require('./src/services/LoggerService').runTest(); require('./src/services/UtilsService').runTests();\"",
     "clean-logs": "node -e \"require('./src/services/LoggerService').cleanOldLogs(7);\"",
-    "seed": "node scripts/seeders.js"
+    "seed": "node scripts/seeders.js",
+    "seed:carreras": "node scripts/seedCarreras.js"
   },
   "keywords": [
     "cv-analysis",

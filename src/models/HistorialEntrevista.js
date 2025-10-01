@@ -1,6 +1,5 @@
 const { DataTypes } = require("sequelize");
 const sequelize = require("../config/database");
-const Entrevista = require("./Entrevista");
 
 const HistorialEntrevista = sequelize.define("HistorialEntrevista", {
   resultado: {
@@ -14,28 +13,13 @@ const HistorialEntrevista = sequelize.define("HistorialEntrevista", {
   },
   entrevistaId: {
     type: DataTypes.INTEGER,
-    allowNull: false,
-    references: {
-      model: Entrevista,
-      key: 'id'
-    }
+    allowNull: false
   }
 }, {
   sequelize,
   modelName: "HistorialEntrevista",
   tableName: "historial_entrevistas",
-  timestamps: false // Ya tenemos fecha manualmente
-});
-
-// Asociaciones
-HistorialEntrevista.belongsTo(Entrevista, {
-  foreignKey: 'entrevistaId',
-  as: 'entrevista'
-});
-
-Entrevista.hasMany(HistorialEntrevista, {
-  foreignKey: 'entrevistaId',
-  as: 'historial'
+  timestamps: false
 });
 
 module.exports = HistorialEntrevista;

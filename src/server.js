@@ -75,6 +75,7 @@ app.use(logger.expressMiddleware());
 app.use("/api/auth", require("./routes/auth"));
 app.use("/api/cv", require("./routes/cv"));
 app.use("/api/entrevistas", require("./routes/entrevistas"));
+app.use("/api/carreras", require("./routes/carreras"));
 app.use("/api/informes", require("./routes/informes"));
 app.use("/api/habilidades", require("./routes/habilidades"));
 app.use("/api/preguntas", require("./routes/preguntas"));
