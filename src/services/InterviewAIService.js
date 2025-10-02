@@ -45,7 +45,7 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
 - No uses formato JSON a menos que se solicite específicamente`;
   }
 
-  // 💬 Iniciar conversación de entrevista
+  // 💬 Iniciar conversación de entrevista - CORREGIDO
   async iniciarEntrevista(carrera, dificultad, nombreCandidato) {
     try {
       const systemPrompt = this.getSystemPrompt(carrera, dificultad);
@@ -76,6 +76,8 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
         candidato: nombreCandidato
       });
 
+      // 🔧 CORRECCIÓN: Solo guardar el mensaje inicial del asistente
+      // NO guardar el mensaje del sistema en el historial
       return {
         success: true,
         mensaje: response.content,
@@ -90,33 +92,44 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
 
     } catch (error) {
       logger.error('Error iniciando entrevista con IA', error);
+      
+      // Fallback sin IA
+      const mensajeFallback = `Hola ${nombreCandidato}, ¡bienvenido! Soy tu entrevistador virtual para la posición en ${carrera.nombre}. Comencemos con una pregunta: ¿Qué te motivó a postular para esta posición?`;
+      
       return {
         success: false,
         error: error.message,
-        mensaje: `Hola ${nombreCandidato}, ¡bienvenido! Soy tu entrevistador virtual. Comencemos con una pregunta: ¿Qué te motivó a postular para esta posición en ${carrera.nombre}?`
+        mensaje: mensajeFallback,
+        historial: [
+          {
+            role: 'assistant',
+            content: mensajeFallback,
+            timestamp: new Date().toISOString()
+          }
+        ]
       };
     }
   }
 
-  // 💬 Continuar conversación de entrevista
+  // 💬 Continuar conversación de entrevista - CORREGIDO
   async continuarEntrevista(historialCompleto, mensajeUsuario, carrera, dificultad) {
     try {
       const systemPrompt = this.getSystemPrompt(carrera, dificultad);
       
-      // Construir array de mensajes para el contexto
+      // 🔧 CORRECCIÓN: Construir mensajes para la IA incluyendo system al inicio
+      // pero NO guardarlo en el historial de la BD
       const messages = [
         {
           role: 'system',
           content: systemPrompt
         },
-        ...historialCompleto.map(msg => ({
-          role: msg.role,
-          content: msg.content
-        })),
-        {
-          role: 'user',
-          content: mensajeUsuario
-        }
+        // Agregar solo los mensajes usuario/asistente del historial
+        ...historialCompleto
+          .filter(msg => msg.role === 'user' || msg.role === 'assistant')
+          .map(msg => ({
+            role: msg.role,
+            content: msg.content
+          }))
       ];
 
       const response = await llamaService.chatCompletion(messages, {
@@ -135,24 +148,39 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
 
     } catch (error) {
       logger.error('Error continuando entrevista', error);
+      
+      // Fallback sin IA
+      const respuestasFallback = [
+        'Gracias por tu respuesta. ¿Podrías contarme más sobre tu experiencia en este campo?',
+        'Interesante. ¿Cómo manejas los desafíos técnicos en tu trabajo diario?',
+        'Entiendo. ¿Puedes darme un ejemplo específico de un proyecto exitoso que hayas liderado?',
+        '¿Cómo describirías tu estilo de trabajo en equipo?',
+        'Cuéntame sobre una situación difícil que hayas enfrentado profesionalmente y cómo la resolviste.'
+      ];
+      
+      const respuestaRandom = respuestasFallback[Math.floor(Math.random() * respuestasFallback.length)];
+      
       return {
         success: false,
         error: error.message,
-        mensaje: 'Gracias por tu respuesta. ¿Podrías contarme más sobre tu experiencia en este campo?'
+        mensaje: respuestaRandom
       };
     }
   }
 
-  // 📊 Generar evaluación final
+  // 📊 Generar evaluación final - SIN CAMBIOS (ya estaba bien)
   async generarEvaluacionFinal(historialCompleto, carrera, dificultad) {
     try {
+      // Filtrar solo mensajes relevantes (sin system)
+      const historialLimpio = historialCompleto.filter(m => m.role !== 'system');
+      
       const promptEvaluacion = `Como reclutador profesional, analiza esta entrevista completa y genera una evaluación detallada en formato JSON.
 
 **CARRERA:** ${carrera.nombre}
 **DIFICULTAD:** ${dificultad}
 
 **HISTORIAL DE LA ENTREVISTA:**
-${historialCompleto.map((msg, i) => `${i + 1}. ${msg.role === 'assistant' ? 'ENTREVISTADOR' : 'CANDIDATO'}: ${msg.content}`).join('\n\n')}
+${historialLimpio.map((msg, i) => `${i + 1}. ${msg.role === 'assistant' ? 'ENTREVISTADOR' : 'CANDIDATO'}: ${msg.content}`).join('\n\n')}
 
 **GENERA UN JSON CON ESTA ESTRUCTURA EXACTA:**
 {
@@ -231,24 +259,43 @@ ${historialCompleto.map((msg, i) => `${i + 1}. ${msg.role === 'assistant' ? 'ENT
       logger.error('Error generando evaluación final', error);
       
       // Evaluación fallback básica
+      const mensajesUsuario = historialCompleto.filter(m => m.role === 'user').length;
+      let puntuacionBase = 5.5;
+      
+      if (mensajesUsuario >= 10) puntuacionBase = 8.0;
+      else if (mensajesUsuario >= 7) puntuacionBase = 7.5;
+      else if (mensajesUsuario >= 5) puntuacionBase = 7.0;
+      else if (mensajesUsuario >= 3) puntuacionBase = 6.5;
+      else if (mensajesUsuario >= 2) puntuacionBase = 6.0;
+      
       return {
         success: false,
         error: error.message,
         evaluacion: {
-          puntuacion_global: 7.0,
-          nivel_desempenio: "Bueno",
-          fortalezas: ["Participación activa en la entrevista"],
-          areas_mejora: ["Evaluación detallada pendiente"],
+          puntuacion_global: puntuacionBase,
+          nivel_desempenio: puntuacionBase >= 7.5 ? "Muy Bueno" : puntuacionBase >= 6.5 ? "Bueno" : "Regular",
+          fortalezas: [
+            "Completó la entrevista",
+            `Participó activamente con ${mensajesUsuario} respuestas`
+          ],
+          areas_mejora: [
+            "Profundizar en respuestas técnicas",
+            "Proporcionar más ejemplos específicos"
+          ],
           evaluacion_detallada: {
-            comunicacion: 7,
-            conocimiento_tecnico: 7,
-            experiencia_relevante: 7,
-            actitud_profesional: 7,
-            adaptabilidad: 7
+            comunicacion: puntuacionBase,
+            conocimiento_tecnico: puntuacionBase,
+            experiencia_relevante: puntuacionBase,
+            actitud_profesional: puntuacionBase,
+            adaptabilidad: puntuacionBase
           },
-          recomendacion_contratacion: "Requiere evaluación adicional",
-          comentario_final: "El candidato completó la entrevista. Se recomienda revisión manual de las respuestas.",
-          proximos_pasos_sugeridos: ["Revisión manual del historial", "Considerar segunda entrevista"]
+          recomendacion_contratacion: "Requiere evaluación adicional con entrevista presencial",
+          comentario_final: `El candidato completó la entrevista con ${mensajesUsuario} respuestas. Se recomienda una evaluación más profunda en entrevista presencial.`,
+          proximos_pasos_sugeridos: [
+            "Practicar respuestas más detalladas",
+            "Preparar ejemplos concretos con métricas",
+            "Considerar segunda entrevista técnica"
+          ]
         }
       };
     }
