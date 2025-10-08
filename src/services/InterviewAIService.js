@@ -17,39 +17,48 @@ class InterviewAIService {
 - Eres amigable pero profesional
 - Haces UNA pregunta a la vez y esperas la respuesta del candidato
 - Evalúas las respuestas del candidato considerando el contexto de ${carrera.nombre}
-- Adaptas tus preguntas según las respuestas previas
+- Adaptas tus preguntas según las respuestas previas del candidato
 - Das retroalimentación constructiva cuando es apropiado
+- VARÍA tus preguntas basándote en el flujo natural de la conversación
 
 **NIVEL DE DIFICULTAD:** ${dificultad} - ${dificultadTexto[dificultad]}
 
 **COMPETENCIAS CLAVE A EVALUAR:**
 ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).join('\n') : '- Competencias técnicas generales\n- Habilidades blandas\n- Adaptabilidad'}
 
-**ESTRUCTURA DE LA ENTREVISTA:**
+**ESTRUCTURA FLEXIBLE DE LA ENTREVISTA:**
 1. Saludo profesional y presentación breve
-2. Preguntas sobre experiencia y motivación
-3. Preguntas técnicas específicas de ${carrera.area}
-4. Preguntas situacionales/conductuales
+2. Preguntas sobre experiencia y motivación (VARÍA según lo que mencione el candidato)
+3. Preguntas técnicas específicas de ${carrera.area} (profundiza según respuestas previas)
+4. Preguntas situacionales/conductuales (basadas en temas que surgieron)
 5. Cierre y espacio para preguntas del candidato
 
-**IMPORTANTE:**
-- NO hagas múltiples preguntas a la vez
-- Escucha atentamente cada respuesta antes de continuar
-- Adapta tus preguntas según lo que el candidato comparte
-- Sé empático pero mantén el profesionalismo
-- Al finalizar, proporciona una evaluación honesta y constructiva
+**IMPORTANTE - VARIACIÓN DE PREGUNTAS:**
+- NO repitas preguntas similares que ya hiciste
+- Analiza el historial completo antes de hacer una nueva pregunta
+- Si el candidato mencionó algo interesante, profundiza en ESO
+- Cada pregunta debe seguir naturalmente de la respuesta anterior
+- Si ya cubriste un tema, pasa a otro diferente
+- Usa diferentes ángulos: "¿Cómo...?", "¿Por qué...?", "Cuéntame sobre...", "Dame un ejemplo de..."
+
+**EVITA LA REPETICIÓN:**
+- Antes de preguntar, revisa si ya hiciste una pregunta similar
+- No uses las mismas frases de apertura repetidamente
+- Varía el enfoque: técnico → conductual → situacional → motivacional
+- Si el candidato ya habló de experiencia, pregunta sobre desafíos, aprendizajes, o proyectos futuros
 
 **FORMATO DE RESPUESTA:**
 - Responde de manera natural y conversacional
 - Usa párrafos cortos para facilitar la lectura
-- No uses formato JSON a menos que se solicite específicamente`;
+- No uses formato JSON a menos que se solicite específicamente
+- Menciona algo específico de la respuesta anterior del candidato para mostrar que escuchaste`;
   }
 
-  // 💬 Iniciar conversación de entrevista - CORREGIDO
+  // 💬 Iniciar conversación de entrevista - CON LLAMA 3.1 8B REAL
   async iniciarEntrevista(carrera, dificultad, nombreCandidato) {
     try {
       const systemPrompt = this.getSystemPrompt(carrera, dificultad);
-      
+
       const messages = [
         {
           role: 'system',
@@ -61,19 +70,31 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
         }
       ];
 
+      logger.info('🤖 INICIANDO LLAMADA A LLAMA 3.1 8B', {
+        carrera: carrera.nombre,
+        dificultad,
+        candidato: nombreCandidato,
+        model: 'meta-llama-3.1-8b-instruct'
+      });
+
       const response = await llamaService.chatCompletion(messages, {
-        temperature: 0.7,
-        max_tokens: 400
+        model: 'meta-llama-3.1-8b-instruct', // EXPLÍCITAMENTE especificar modelo
+        temperature: 0.9,
+        max_tokens: 400,
+        top_p: 0.95,
+        frequency_penalty: 0.6,
+        presence_penalty: 0.6
       });
 
       if (!response.success) {
+        logger.error('❌ LLAMA FALLÓ - Usando fallback', { error: response.error });
         throw new Error(response.error);
       }
 
-      logger.info('Entrevista iniciada con IA', {
-        carrera: carrera.nombre,
-        dificultad,
-        candidato: nombreCandidato
+      logger.success('✅ RESPUESTA DE LLAMA 3.1 8B RECIBIDA', {
+        model_usado: response.model,
+        tokens_usados: response.usage,
+        longitud_respuesta: response.content?.length
       });
 
       // 🔧 CORRECCIÓN: Solo guardar el mensaje inicial del asistente
@@ -81,6 +102,7 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
       return {
         success: true,
         mensaje: response.content,
+        model_usado: response.model, // Indicar qué modelo se usó
         historial: [
           {
             role: 'assistant',
@@ -91,15 +113,16 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
       };
 
     } catch (error) {
-      logger.error('Error iniciando entrevista con IA', error);
-      
+      logger.error('❌ ERROR CRÍTICO - FALLBACK ACTIVADO', error);
+
       // Fallback sin IA
       const mensajeFallback = `Hola ${nombreCandidato}, ¡bienvenido! Soy tu entrevistador virtual para la posición en ${carrera.nombre}. Comencemos con una pregunta: ¿Qué te motivó a postular para esta posición?`;
-      
+
       return {
         success: false,
         error: error.message,
         mensaje: mensajeFallback,
+        usando_fallback: true, // Flag para identificar cuando NO se usa IA
         historial: [
           {
             role: 'assistant',
@@ -111,11 +134,11 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
     }
   }
 
-  // 💬 Continuar conversación de entrevista - CORREGIDO
+  // 💬 Continuar conversación de entrevista - CON LLAMA 3.1 8B REAL
   async continuarEntrevista(historialCompleto, mensajeUsuario, carrera, dificultad) {
     try {
       const systemPrompt = this.getSystemPrompt(carrera, dificultad);
-      
+
       // 🔧 CORRECCIÓN: Construir mensajes para la IA incluyendo system al inicio
       // pero NO guardarlo en el historial de la BD
       const messages = [
@@ -132,23 +155,41 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
           }))
       ];
 
+      logger.info('🤖 CONTINUANDO CON LLAMA 3.1 8B', {
+        total_mensajes_historial: messages.length - 1, // -1 por el system
+        mensajes_usuario: messages.filter(m => m.role === 'user').length,
+        mensajes_asistente: messages.filter(m => m.role === 'assistant').length
+      });
+
       const response = await llamaService.chatCompletion(messages, {
-        temperature: 0.7,
-        max_tokens: 400
+        model: 'meta-llama-3.1-8b-instruct', // EXPLÍCITAMENTE especificar modelo
+        temperature: 0.9, // Mayor variación en las respuestas
+        max_tokens: 400,
+        top_p: 0.95, // Más diversidad en la selección de tokens
+        frequency_penalty: 0.6, // Penaliza repeticiones
+        presence_penalty: 0.6 // Fomenta temas nuevos
       });
 
       if (!response.success) {
+        logger.error('❌ LLAMA FALLÓ EN CONTINUAR - Usando fallback', { error: response.error });
         throw new Error(response.error);
       }
 
+      logger.success('✅ RESPUESTA CONTINUA DE LLAMA 3.1 8B', {
+        model_usado: response.model,
+        tokens_usados: response.usage,
+        longitud_respuesta: response.content?.length
+      });
+
       return {
         success: true,
-        mensaje: response.content
+        mensaje: response.content,
+        model_usado: response.model
       };
 
     } catch (error) {
-      logger.error('Error continuando entrevista', error);
-      
+      logger.error('❌ ERROR EN CONTINUAR - FALLBACK ACTIVADO', error);
+
       // Fallback sin IA
       const respuestasFallback = [
         'Gracias por tu respuesta. ¿Podrías contarme más sobre tu experiencia en este campo?',
@@ -157,13 +198,14 @@ ${carrera.competencias_clave ? carrera.competencias_clave.map(c => `- ${c}`).joi
         '¿Cómo describirías tu estilo de trabajo en equipo?',
         'Cuéntame sobre una situación difícil que hayas enfrentado profesionalmente y cómo la resolviste.'
       ];
-      
+
       const respuestaRandom = respuestasFallback[Math.floor(Math.random() * respuestasFallback.length)];
-      
+
       return {
         success: false,
         error: error.message,
-        mensaje: respuestaRandom
+        mensaje: respuestaRandom,
+        usando_fallback: true
       };
     }
   }
