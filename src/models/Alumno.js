@@ -41,6 +41,14 @@ Alumno.init(
       type: DataTypes.INTEGER,
       allowNull: false,
       defaultValue: 0
+    },
+    rol: {
+      type: DataTypes.STRING,
+      allowNull: false,
+      defaultValue: 'alumno',
+      validate: {
+        isIn: [['alumno', 'administrador']]
+      }
     }
   },
   {

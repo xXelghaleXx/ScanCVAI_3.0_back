@@ -9,16 +9,21 @@ const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Función para crear access y refresh tokens
 const generarTokens = async (alumnoId, correo, req) => {
+  const alumno = await Alumno.findByPk(alumnoId, {
+    attributes: ['rol']
+  });
+
   const accessToken = jwt.sign(
-    { 
-      id: alumnoId, 
+    {
+      id: alumnoId,
       correo,
+      rol: alumno?.rol || 'alumno',
       type: 'access'
     },
     process.env.JWT_SECRET,
-    { 
-      expiresIn: "15m",
-      jwtid: utilsService.generateUniqueId() 
+    {
+      expiresIn: "90m",
+      jwtid: utilsService.generateUniqueId()
     }
   );
 

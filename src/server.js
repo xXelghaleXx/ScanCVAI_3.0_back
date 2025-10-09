@@ -80,6 +80,7 @@ app.use("/api/informes", require("./routes/informes"));
 app.use("/api/habilidades", require("./routes/habilidades"));
 app.use("/api/preguntas", require("./routes/preguntas"));
 app.use("/api/dashboard", require("./routes/dashboard"));
+app.use("/api/admin", require("./routes/admin"));
 
 // 📊 Ruta de métricas (protegida)
 app.get("/api/metrics", authMiddleware, metricsEndpoint);
