@@ -177,33 +177,48 @@ class AdminController {
           limit: 10
         }),
 
-        // Informes del usuario
-        Informe.findAll({
-          include: [{
-            model: CV,
-            as: 'cv',
+        // Informes del usuario - Primero obtenemos los CVs del usuario
+        (async () => {
+          const userCVs = await CV.findAll({
             where: { alumnoId: userId },
-            attributes: ['archivo']
-          }],
-          attributes: ['id', 'resumen', 'fecha_generacion'],
-          order: [['fecha_generacion', 'DESC']],
-          limit: 10
-        }),
+            attributes: ['id'],
+            raw: true
+          });
+          const cvIds = userCVs.map(cv => cv.id);
+
+          if (cvIds.length === 0) return [];
+
+          return await Informe.findAll({
+            where: { cvId: { [Op.in]: cvIds } },
+            include: [{
+              model: CV,
+              as: 'cv',
+              attributes: ['archivo']
+            }],
+            attributes: ['id', 'resumen', 'fecha_generacion'],
+            order: [['fecha_generacion', 'DESC']],
+            limit: 10
+          });
+        })(),
 
         // Estadísticas de entrevistas
-        Entrevista.findAll({
-          where: {
-            alumnoId: userId,
-            promedio_puntuacion: { [Op.not]: null }
-          },
-          attributes: [
-            [sequelize.fn('COUNT', sequelize.col('id')), 'total'],
-            [sequelize.fn('AVG', sequelize.col('promedio_puntuacion')), 'promedio'],
-            [sequelize.fn('MAX', sequelize.col('promedio_puntuacion')), 'maximo'],
-            [sequelize.fn('MIN', sequelize.col('promedio_puntuacion')), 'minimo']
-          ],
-          raw: true
-        }),
+        (async () => {
+          const stats = await Entrevista.findAll({
+            where: {
+              alumnoId: userId,
+              promedio_puntuacion: { [Op.not]: null }
+            },
+            attributes: [
+              [sequelize.fn('COUNT', sequelize.col('id')), 'total'],
+              [sequelize.fn('AVG', sequelize.col('promedio_puntuacion')), 'promedio'],
+              [sequelize.fn('MAX', sequelize.col('promedio_puntuacion')), 'maximo'],
+              [sequelize.fn('MIN', sequelize.col('promedio_puntuacion')), 'minimo']
+            ],
+            raw: true
+          });
+          // Si no hay resultados o el total es 0, devolver null
+          return (stats[0] && stats[0].total > 0) ? stats : [null];
+        })(),
 
         // Distribución de resultados de entrevistas
         Entrevista.findAll({
@@ -223,8 +238,8 @@ class AdminController {
         Promise.all([
           CV.findAll({
             where: { alumnoId: userId },
-            attributes: ['id', 'archivo', 'createdAt'],
-            order: [['createdAt', 'DESC']],
+            attributes: ['id', 'archivo', 'fecha_creacion'],
+            order: [['fecha_creacion', 'DESC']],
             limit: 5,
             raw: true
           }),
@@ -243,7 +258,7 @@ class AdminController {
         ...ultimasActividades[0].map(cv => ({
           tipo: 'cv',
           descripcion: `CV subido: ${cv.archivo}`,
-          fecha: cv.createdAt
+          fecha: cv.fecha_creacion
         })),
         ...ultimasActividades[1].map(ent => ({
           tipo: 'entrevista',
