@@ -1,10 +1,11 @@
-const { 
-  Entrevista, 
-  Alumno, 
+const {
+  Entrevista,
+  Alumno,
   Carrera,
-  HistorialEntrevista 
+  HistorialEntrevista
 } = require("../models");
 const interviewAIService = require("../services/InterviewAIService");
+const ScoringService = require("../services/ScoringService");
 const logger = require("../services/LoggerService");
 
 class EntrevistaController {
@@ -366,50 +367,66 @@ class EntrevistaController {
 
       let evaluacion;
 
-      // Si la IA no está disponible o falló, usar evaluación básica
+      // Calcular puntuación con sistema de métricas reales
+      const resultadoScoring = ScoringService.calcularPuntuacion(
+        mensajesUsuario,
+        mensajesAsistente,
+        entrevista.dificultad
+      );
+
+      // Generar análisis de métricas
+      const analisisMetricas = ScoringService.generarAnalisisMetricas(resultadoScoring);
+
+      // Si la IA no está disponible o falló, usar evaluación basada en scoring
       if (!evaluacionIA.success) {
-        logger.warn('IA no disponible, usando evaluación básica', {
+        logger.warn('IA no disponible, usando evaluación basada en scoring', {
           entrevista_id: entrevistaId,
+          puntuacion_scoring: resultadoScoring.puntuacion_final,
           error: evaluacionIA.error
         });
 
-        // Evaluación básica basada en cantidad de mensajes del usuario
-        let puntuacionBase = 5.0;
-
-        // Ajustar puntuación según participación
-        if (mensajesUsuario.length >= 5) puntuacionBase = 7.5;
-        else if (mensajesUsuario.length >= 3) puntuacionBase = 6.5;
-        else if (mensajesUsuario.length >= 2) puntuacionBase = 6.0;
-        else if (mensajesUsuario.length >= 1) puntuacionBase = 5.5;
-
+        // Construir evaluación basada en el sistema de scoring
         evaluacion = {
-          puntuacion_global: puntuacionBase,
-          nivel_desempenio: puntuacionBase >= 7 ? "Bueno" : "Regular",
+          puntuacion_global: resultadoScoring.puntuacion_final,
+          nivel_desempenio: resultadoScoring.nivel_desempeno,
           fortalezas: [
-            "Completó la entrevista",
-            `Participó con ${mensajesUsuario.length} respuesta${mensajesUsuario.length !== 1 ? 's' : ''}`
+            `Completaste la entrevista con ${mensajesUsuario.length} respuesta${mensajesUsuario.length !== 1 ? 's' : ''}`,
+            ...(resultadoScoring.metricas.palabras_promedio >= 30 ? ['Respuestas bien elaboradas y detalladas'] : []),
+            ...(resultadoScoring.metricas.consistencia_porcentaje >= 70 ? ['Consistencia notable en la calidad de tus respuestas'] : []),
+            ...(resultadoScoring.metricas.completitud_porcentaje === 100 ? ['Respondiste todas las preguntas realizadas'] : [])
           ],
           areas_mejora: [
-            "Extender la duración de las respuestas",
-            "Proporcionar ejemplos más específicos"
+            ...(resultadoScoring.metricas.palabras_promedio < 30 ? ['Amplía tus respuestas con más detalles y ejemplos específicos'] : []),
+            ...(resultadoScoring.metricas.cantidad_respuestas < 5 ? ['Participa más activamente en futuras entrevistas'] : []),
+            ...(resultadoScoring.metricas.consistencia_porcentaje < 70 ? ['Mantén un nivel de detalle más uniforme en todas tus respuestas'] : []),
+            'Practica con entrevistas más largas para demostrar todo tu potencial'
           ],
           evaluacion_detallada: {
-            comunicacion: puntuacionBase,
-            conocimiento_tecnico: puntuacionBase,
-            experiencia_relevante: puntuacionBase,
-            actitud_profesional: puntuacionBase,
-            adaptabilidad: puntuacionBase
+            participacion: resultadoScoring.desglose_puntos.cantidad.puntos,
+            calidad_respuestas: resultadoScoring.desglose_puntos.densidad.puntos,
+            consistencia: resultadoScoring.desglose_puntos.consistencia.puntos,
+            completitud: resultadoScoring.desglose_puntos.completitud.puntos
           },
-          recomendacion_contratacion: "Requiere evaluación adicional",
-          comentario_final: `El candidato completó la entrevista con ${mensajesUsuario.length} respuesta${mensajesUsuario.length !== 1 ? 's' : ''}. Se recomienda una entrevista más extensa para una evaluación completa.`,
+          recomendacion_contratacion: resultadoScoring.puntuacion_final >= 80
+            ? "Recomendado"
+            : resultadoScoring.puntuacion_final >= 60
+              ? "Recomendado con reservas"
+              : "Requiere evaluación adicional",
+          comentario_final: analisisMetricas.resumen,
           proximos_pasos_sugeridos: [
-            "Practicar respuestas más detalladas",
-            "Realizar entrevista más extensa",
-            "Preparar ejemplos concretos de experiencia"
-          ]
+            ...(resultadoScoring.puntuacion_final >= 80 ? ['Considerar para segunda entrevista'] : []),
+            'Practicar respuestas con método STAR (Situación, Tarea, Acción, Resultado)',
+            'Preparar ejemplos concretos de proyectos y logros',
+            ...(resultadoScoring.metricas.palabras_promedio < 30 ? ['Desarrollar habilidades de comunicación verbal'] : [])
+          ],
+          metricas_puntuacion: resultadoScoring
         };
       } else {
-        evaluacion = evaluacionIA.evaluacion;
+        // Si la IA está disponible, usar su evaluación pero agregar métricas de scoring
+        evaluacion = {
+          ...evaluacionIA.evaluacion,
+          metricas_puntuacion: resultadoScoring
+        };
       }
 
       // Calcular duración

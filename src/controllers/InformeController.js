@@ -1,13 +1,14 @@
-const { 
-  Informe, 
-  CV, 
-  Alumno, 
-  InformeFortalezas, 
-  InformeHabilidades, 
+const {
+  Informe,
+  CV,
+  Alumno,
+  InformeFortalezas,
+  InformeHabilidades,
   InformeAreasMejora,
   Habilidad,
   TipoHabilidad
 } = require("../models");
+const PDFGenerator = require("../services/pdfGenerator");
 
 class InformeController {
 
@@ -156,7 +157,7 @@ class InformeController {
     }
   }
 
-  // 📥 RF-107: Descargar informe en PDF (placeholder)
+  // 📥 RF-107: Descargar informe en PDF
   static async descargarInformePDF(req, res) {
     try {
       const { informeId } = req.params;
@@ -207,12 +208,11 @@ class InformeController {
         return res.status(404).json({ error: "Informe no encontrado" });
       }
 
-      // TODO: Generar PDF con librería como puppeteer, jsPDF, etc.
-      // Por ahora devolvemos la estructura que se usaría para generar el PDF
-      
+      // Preparar datos para el PDF
       const contenidoPDF = {
-        titulo: `Informe de Análisis de CV - ${informe.cv.alumno.nombre}`,
+        titulo: `Informe de Análisis de CV`,
         fecha: informe.fecha_generacion,
+        alumno: informe.cv.alumno.nombre,
         resumen: informe.resumen,
         fortalezas: informe.fortalezas.map(f => f.fortaleza),
         habilidades_tecnicas: informe.habilidades
@@ -224,12 +224,19 @@ class InformeController {
         areas_mejora: informe.areas_mejora.map(a => a.area_mejora)
       };
 
-      res.json({
-        message: "Contenido del PDF generado (pendiente implementación de generador PDF)",
-        contenido: contenidoPDF
-      });
+      // Generar PDF
+      const pdfBuffer = await PDFGenerator.generatePDF(contenidoPDF);
+
+      // Configurar headers para descarga
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `attachment; filename="Informe_CV_${informe.cv.alumno.nombre}_${informeId}.pdf"`);
+      res.setHeader('Content-Length', pdfBuffer.length);
+
+      // Enviar PDF
+      res.send(pdfBuffer);
 
     } catch (error) {
+      console.error('Error generando PDF:', error);
       res.status(500).json({ error: error.message });
     }
   }
