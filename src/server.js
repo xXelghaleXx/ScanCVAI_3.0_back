@@ -1,14 +1,14 @@
 const express = require("express");
 const cors = require("cors"); // ← AGREGAR ESTA LÍNEA
-const { syncModels } = require("./models");
-const authMiddleware = require("./middlewares/authMiddleware");
-const { performanceMonitoring, globalErrorHandler, anomalyDetection, metricsEndpoint } = require("./middlewares/monitoringMiddleware");
-const { sanitizeInput, simpleRateLimit } = require("./middlewares/validationMiddleware");
-const { cleanupOnError } = require("./middlewares/uploadMiddleware");
-const logger = require("./services/LoggerService");
-const llamaService = require("./services/LlamaService");
-const fileExtractorService = require("./services/FileExtractorService");
-const utilsService = require("./services/UtilsService");
+const { syncModels } = require("./database/models");
+const authMiddleware = require("./shared/middlewares/auth.middleware");
+const { performanceMonitoring, globalErrorHandler, anomalyDetection, metricsEndpoint } = require("./shared/middlewares/monitoring.middleware");
+const { sanitizeInput, simpleRateLimit } = require("./shared/middlewares/validation.middleware");
+const { cleanupOnError } = require("./shared/middlewares/upload.middleware");
+const logger = require("./shared/services/logger.service");
+const llamaService = require("./shared/services/llama.service");
+const fileExtractorService = require("./shared/services/file-extractor.service");
+const utilsService = require("./shared/services/utils.service");
 require("dotenv").config();
 
 const app = express();
@@ -72,15 +72,15 @@ app.use((req, res, next) => {
 app.use(logger.expressMiddleware());
 
 // 🔌 Rutas principales
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/cv", require("./routes/cv"));
-app.use("/api/entrevistas", require("./routes/entrevistas"));
-app.use("/api/carreras", require("./routes/carreras"));
-app.use("/api/informes", require("./routes/informes"));
-app.use("/api/habilidades", require("./routes/habilidades"));
-app.use("/api/preguntas", require("./routes/preguntas"));
-app.use("/api/dashboard", require("./routes/dashboard"));
-app.use("/api/admin", require("./routes/admin"));
+app.use("/api/auth", require("./modules/auth/auth.routes"));
+app.use("/api/cv", require("./modules/cv/cv.routes"));
+app.use("/api/entrevistas", require("./modules/entrevista/entrevista.routes"));
+app.use("/api/carreras", require("./modules/carrera/carrera.routes"));
+app.use("/api/informes", require("./modules/informe/informe.routes"));
+app.use("/api/habilidades", require("./modules/habilidad/habilidad.routes"));
+app.use("/api/preguntas", require("./modules/pregunta/pregunta.routes"));
+app.use("/api/dashboard", require("./modules/dashboard/dashboard.routes"));
+app.use("/api/admin", require("./modules/admin/admin.routes"));
 
 // 📊 Ruta de métricas (protegida)
 app.get("/api/metrics", authMiddleware, metricsEndpoint);
