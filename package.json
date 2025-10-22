@@ -6,10 +6,14 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
+    "build": "echo \"No build step required for Node.js backend\"",
+    "postinstall": "echo \"Dependencies installed successfully\"",
     "test-services": "node -e \"require('./src/services/LoggerService').runTest(); require('./src/services/UtilsService').runTests();\"",
     "clean-logs": "node -e \"require('./src/services/LoggerService').cleanOldLogs(7);\"",
     "seed": "node scripts/seeders.js",
-    "seed:carreras": "node scripts/seedCarreras.js"
+    "seed:carreras": "node scripts/seedCarreras.js",
+    "migrate": "npx sequelize-cli db:migrate",
+    "migrate:undo": "npx sequelize-cli db:migrate:undo"
   },
   "keywords": [
     "cv-analysis",
