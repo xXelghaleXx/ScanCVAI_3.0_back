@@ -1,13 +1,14 @@
-const { 
-  CV, 
-  Alumno, 
-  Informe, 
+const path = require("path");
+const {
+  CV,
+  Alumno,
+  Informe,
   InformeFortalezas,
   InformeHabilidades,
   InformeAreasMejora,
-  CVHabilidad, 
-  Habilidad, 
-  TipoHabilidad 
+  CVHabilidad,
+  Habilidad,
+  TipoHabilidad
 } = require("../../database/models");
 const llamaService = require("../../shared/services/llama.service");
 const fileExtractorService = require("../../shared/services/file-extractor.service");
@@ -20,15 +21,17 @@ class CVController {
   static async subirCV(req, res) {
     try {
       const alumnoId = req.user.id;
-      
+
       if (!req.file) {
         return res.status(400).json({ error: "Archivo CV requerido" });
       }
 
-      // Crear registro CV en BD
+      // Crear registro CV en BD con información de Cloudinary
       const cv = await CV.create({
         alumnoId,
-        archivo: req.file.path,
+        archivo: req.file.path, // URL de Cloudinary
+        cloudinary_public_id: req.file.filename, // Public ID de Cloudinary
+        file_extension: req.file.originalExtension || path.extname(req.file.originalname).toLowerCase(), // Extensión del archivo
         contenido_extraido: null // Se llenará después con IA
       });
 
@@ -36,20 +39,22 @@ class CVController {
       logger.cvUploaded(alumnoId, req.file.filename, req.file.sizeFormatted);
 
       res.status(201).json({
-        message: "CV subido correctamente",
+        message: "CV subido correctamente a Cloudinary",
         cv: {
           id: cv.id,
           archivo: cv.archivo,
+          cloudinary_public_id: cv.cloudinary_public_id,
           fecha_creacion: cv.fecha_creacion,
           size: req.file.sizeFormatted,
-          ready_for_processing: true
+          ready_for_processing: true,
+          storage: 'cloudinary'
         }
       });
 
     } catch (error) {
-      logger.error("Error subiendo CV", error, { 
+      logger.error("Error subiendo CV", error, {
         user_id: req.user?.id,
-        filename: req.file?.filename 
+        filename: req.file?.filename
       });
       res.status(500).json({ error: error.message });
     }
@@ -87,7 +92,7 @@ class CVController {
 
       // 1. Extraer texto del archivo
       logger.info("Extrayendo texto del archivo...");
-      const extractionResult = await fileExtractorService.extractText(cv.archivo);
+      const extractionResult = await fileExtractorService.extractText(cv.archivo, cv.file_extension);
       
       if (!extractionResult.success) {
         logger.cvAnalysisFailed(alumnoId, cvId, new Error(extractionResult.error));
@@ -491,15 +496,26 @@ class CVController {
       }
 
       // 2. Eliminar relaciones CV-Habilidades
-      await CVHabilidad.destroy({ 
-        where: { cvId }, 
-        transaction 
+      await CVHabilidad.destroy({
+        where: { cvId },
+        transaction
       });
 
-      // 3. Eliminar archivo físico del servidor
-      const { deleteFile } = require("../../shared/middlewares/upload.middleware");
-      if (cv.archivo) {
-        deleteFile(cv.archivo);
+      // 3. Eliminar archivo de Cloudinary
+      if (cv.cloudinary_public_id) {
+        const { deleteFile } = require("../../shared/services/cloudinary.service");
+        const deleteResult = await deleteFile(cv.cloudinary_public_id);
+
+        if (!deleteResult.success) {
+          logger.warn("No se pudo eliminar archivo de Cloudinary", {
+            public_id: cv.cloudinary_public_id,
+            error: deleteResult.error
+          });
+        } else {
+          logger.info("Archivo eliminado de Cloudinary", {
+            public_id: cv.cloudinary_public_id
+          });
+        }
       }
 
       // 4. Finalmente eliminar el CV

@@ -2,17 +2,17 @@ const express = require("express");
 const router = express.Router();
 const CVController = require("./cv.controller");
 const authMiddleware = require("../../shared/middlewares/auth.middleware");
-const { uploadCV, cleanupOnError } = require("../../shared/middlewares/upload.middleware");
+// Usar Cloudinary en lugar de almacenamiento local
+const { uploadCV } = require("../../shared/middlewares/upload-cloudinary.middleware");
 const { validateCVProcessing, validateIdParam, simpleRateLimit } = require("../../shared/middlewares/validation.middleware");
 
 // 🔒 Todas las rutas requieren autenticación
 router.use(authMiddleware);
 
 // 📄 RF-100: Subir CV (con rate limiting específico)
-router.post("/upload", 
+router.post("/upload",
   simpleRateLimit(10, 60 * 1000),
   uploadCV,
-  cleanupOnError,
   CVController.subirCV
 );
 

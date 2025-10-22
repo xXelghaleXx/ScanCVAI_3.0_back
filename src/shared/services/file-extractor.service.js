@@ -2,17 +2,43 @@ const fs = require('fs');
 const path = require('path');
 const pdf = require('pdf-parse');
 const mammoth = require('mammoth');
+const { downloadFile } = require('./cloudinary.service');
 
 class FileExtractorService {
+
+  // 🔗 Detectar si es URL de Cloudinary
+  isCloudinaryUrl(filePath) {
+    return filePath && (
+      filePath.startsWith('http://') ||
+      filePath.startsWith('https://')
+    );
+  }
+
+  // 📥 Obtener buffer del archivo (local o Cloudinary)
+  async getFileBuffer(filePath) {
+    try {
+      // Si es URL de Cloudinary, descargar primero
+      if (this.isCloudinaryUrl(filePath)) {
+        console.log('☁️ Descargando archivo desde Cloudinary...');
+        return await downloadFile(filePath);
+      }
+
+      // Si es archivo local, leer directamente
+      if (!fs.existsSync(filePath)) {
+        throw new Error('Archivo no encontrado');
+      }
+
+      return fs.readFileSync(filePath);
+    } catch (error) {
+      console.error('❌ Error obteniendo archivo:', error);
+      throw error;
+    }
+  }
 
   // 📄 Extraer texto de PDF
   async extractFromPDF(filePath) {
     try {
-      if (!fs.existsSync(filePath)) {
-        throw new Error('Archivo PDF no encontrado');
-      }
-
-      const dataBuffer = fs.readFileSync(filePath);
+      const dataBuffer = await this.getFileBuffer(filePath);
       const data = await pdf(dataBuffer);
 
       return {
@@ -43,12 +69,10 @@ class FileExtractorService {
   // 📝 Extraer texto de DOCX
   async extractFromDOCX(filePath) {
     try {
-      if (!fs.existsSync(filePath)) {
-        throw new Error('Archivo DOCX no encontrado');
-      }
+      // Para DOCX, mammoth necesita un buffer
+      const dataBuffer = await this.getFileBuffer(filePath);
+      const result = await mammoth.extractRawText({ buffer: dataBuffer });
 
-      const result = await mammoth.extractRawText({ path: filePath });
-      
       return {
         success: true,
         text: result.value,
@@ -71,28 +95,46 @@ class FileExtractorService {
   }
 
   // 📋 Extraer texto automático según extensión
-  async extractText(filePath) {
+  async extractText(filePath, fileExtension = null) {
     try {
-      const extension = path.extname(filePath).toLowerCase();
-      
-      console.log(`📖 Extrayendo texto de: ${path.basename(filePath)} (${extension})`);
-      
+      // Determinar extensión desde parámetro, URL o path local
+      let extension = fileExtension;
+
+      if (!extension) {
+        if (this.isCloudinaryUrl(filePath)) {
+          // Para URLs, extraer extensión de la URL antes de los parámetros
+          const urlPath = filePath.split('?')[0];
+          extension = path.extname(urlPath).toLowerCase();
+          console.log(`📖 Extrayendo texto de URL Cloudinary (${extension})`);
+        } else {
+          extension = path.extname(filePath).toLowerCase();
+          console.log(`📖 Extrayendo texto de: ${path.basename(filePath)} (${extension})`);
+        }
+      } else {
+        // Asegurar que la extensión comience con punto
+        if (!extension.startsWith('.')) {
+          extension = '.' + extension;
+        }
+        extension = extension.toLowerCase();
+        console.log(`📖 Extrayendo texto con extensión especificada: ${extension}`);
+      }
+
       let result;
-      
+
       switch (extension) {
         case '.pdf':
           result = await this.extractFromPDF(filePath);
           break;
-          
+
         case '.docx':
           result = await this.extractFromDOCX(filePath);
           break;
-          
+
         case '.doc':
           // Para archivos .doc antiguos, intentar con mammoth también
           result = await this.extractFromDOCX(filePath);
           break;
-          
+
         default:
           throw new Error(`Formato de archivo no soportado: ${extension}`);
       }
@@ -101,7 +143,7 @@ class FileExtractorService {
         // RF-101: Validaciones adicionales del contenido
         const validation = this.validateExtractedContent(result.text);
         result.validation = validation;
-        
+
         console.log(`✅ Texto extraído exitosamente: ${result.stats.characters} caracteres`);
       }
 

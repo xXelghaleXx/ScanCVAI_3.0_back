@@ -6,7 +6,17 @@ const CV = sequelize.define("CV", {
   archivo: {
     type: DataTypes.STRING,
     allowNull: false,
-    comment: "Ruta del archivo CV (se almacenará en /uploads/cvs/)"
+    comment: "URL de Cloudinary o ruta local del archivo CV"
+  },
+  cloudinary_public_id: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: "Public ID de Cloudinary para gestión del archivo"
+  },
+  file_extension: {
+    type: DataTypes.STRING(10),
+    allowNull: true,
+    comment: "Extensión del archivo original (.pdf, .docx, .doc)"
   },
   contenido_extraido: {
     type: DataTypes.TEXT,
