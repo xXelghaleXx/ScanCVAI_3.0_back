@@ -85,25 +85,30 @@ app.use("/api/admin", require("./modules/admin/admin.routes"));
 // 📊 Ruta de métricas (protegida)
 app.get("/api/metrics", authMiddleware, metricsEndpoint);
 
-// 🏠 Ruta de salud (MEJORADA con info de CORS)
+// 🏠 Ruta de salud (MEJORADA - Llama es opcional)
 app.get("/api/health", async (req, res) => {
   try {
-    // Verificar conexión con Llama
-    const llamaStatus = await llamaService.checkConnection();
-    
+    // Verificar conexión con Llama (no crítico)
+    let llamaStatus = { connected: false };
+    try {
+      llamaStatus = await llamaService.checkConnection();
+    } catch (err) {
+      logger.debug("Llama no disponible en health check", err);
+    }
+
     // Verificar servicios
     const services = {
       database: "connected", // Se verifica en syncModels
-      llama: llamaStatus.connected ? "connected" : "disconnected",
+      llama: llamaStatus.connected ? "connected" : "optional",
       file_extractor: "ready",
       logger: "active",
       utils: "ready",
-      cors: "configured" // ← AGREGAR INFO DE CORS
+      cors: "configured"
     };
 
-    const allHealthy = Object.values(services).every(status => 
-      status === "connected" || status === "ready" || status === "active" || status === "configured"
-    );
+    // El servidor está saludable aunque Llama no esté conectado
+    const allHealthy = services.database === "connected" &&
+                       services.file_extractor === "ready";
 
     res.status(allHealthy ? 200 : 503).json({
       status: allHealthy ? "healthy" : "degraded",
@@ -116,7 +121,8 @@ app.get("/api/health", async (req, res) => {
       timestamp: new Date().toISOString(),
       uptime: process.uptime(),
       memory: process.memoryUsage(),
-      version: process.env.npm_package_version || "1.0.0"
+      version: process.env.npm_package_version || "1.0.0",
+      environment: process.env.NODE_ENV || "development"
     });
 
   } catch (error) {
@@ -205,17 +211,24 @@ const initializeServer = async () => {
     await syncModels({ alter: true });
     logger.databaseConnected();
 
-    // 3. Verificar servicios
+    // 3. Verificar servicios (Llama es opcional)
     logger.info("🧪 Verificando servicios...");
-    
-    // Test Llama connection
-    const llamaStatus = await llamaService.checkConnection();
-    if (llamaStatus.connected) {
-      logger.success("✅ Llama 3.1 conectado correctamente");
-    } else {
-      logger.warn("⚠️ Llama 3.1 no disponible - Funcionalidad de IA limitada", {
-        error: llamaStatus.error
+
+    // Test Llama connection (no crítico)
+    let llamaStatus = { connected: false };
+    try {
+      llamaStatus = await llamaService.checkConnection();
+      if (llamaStatus.connected) {
+        logger.success("✅ Llama 3.1 conectado correctamente");
+      } else {
+        logger.warn("⚠️ Llama 3.1 no disponible - Las funciones de IA no estarán disponibles");
+      }
+    } catch (error) {
+      logger.warn("⚠️ No se pudo conectar con Llama - Continuando sin IA", {
+        error: error.message,
+        llama_url: process.env.LLAMA_BASE_URL || 'no configurado'
       });
+      llamaStatus = { connected: false, error: error.message };
     }
 
     // 4. Ejecutar tests en desarrollo
@@ -226,28 +239,31 @@ const initializeServer = async () => {
     }
 
     // 5. Iniciar servidor
-    app.listen(PORT, () => {
+    app.listen(PORT, '0.0.0.0', () => {
       logger.serverStarted(PORT);
-      
+
+      const serverUrl = process.env.NODE_ENV === 'production'
+        ? 'https://scancvai-3-0-back.onrender.com'
+        : `http://localhost:${PORT}`;
+
       console.log(`
 ╔═══════════════════════════════════════════════════════════════╗
 ║  🎓 SISTEMA DE ANÁLISIS DE CV Y ENTREVISTAS                  ║
 ║                                                               ║
-║  🚀 Servidor: http://localhost:${PORT}                        ║
-║  📊 Health: http://localhost:${PORT}/api/health               ║
-║  📈 Metrics: http://localhost:${PORT}/api/metrics             ║
-║  🧪 Tests: http://localhost:${PORT}/api/test                  ║
-║  🌐 CORS Test: http://localhost:${PORT}/api/cors-test         ║
+║  🚀 Servidor: ${serverUrl.padEnd(43)}║
+║  📊 Health: ${serverUrl}/api/health${' '.repeat(Math.max(0, 25 - serverUrl.length))}║
+║  📈 Metrics: ${serverUrl}/api/metrics${' '.repeat(Math.max(0, 23 - serverUrl.length))}║
+║  ${process.env.NODE_ENV !== 'production' ? `🧪 Tests: ${serverUrl}/api/test` : '🌍 Environment: PRODUCTION'}${' '.repeat(Math.max(0, 25 - serverUrl.length))}║
 ║                                                               ║
 ║  Servicios:                                                   ║
 ║  ${llamaStatus.connected ? '✅' : '⚠️'} Llama 3.1 (${llamaStatus.connected ? 'Conectado' : 'Desconectado'})                         ║
-║  ✅ Base de datos PostgreSQL                                 ║
-║  ✅ Upload de archivos                                        ║
+║  ✅ Base de datos PostgreSQL (Clever Cloud)                  ║
+║  ✅ Upload de archivos (Cloudinary)                          ║
 ║  ✅ Logging y monitoreo                                       ║
-║  🌐 CORS configurado para: ${corsOptions.origin.length} orígenes      ║
+║  🌐 CORS: ${corsOptions.origin.length} orígenes permitidos                    ║
 ║                                                               ║
-║  📝 Logs: ./logs/                                            ║
-║  📁 Uploads: ./uploads/cvs/                                  ║
+║  Frontend: ${process.env.FRONTEND_URL || 'No configurado'}${' '.repeat(Math.max(0, 35 - (process.env.FRONTEND_URL || 'No configurado').length))}║
+║  Node ENV: ${process.env.NODE_ENV || 'development'}${' '.repeat(Math.max(0, 42 - (process.env.NODE_ENV || 'development').length))}║
 ╚═══════════════════════════════════════════════════════════════╝
       `);
 
