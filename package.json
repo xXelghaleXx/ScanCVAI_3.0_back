@@ -6,7 +6,7 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "nodemon src/server.js",
     "start": "node src/server.js",
-    "build": "echo \"No build step required for Node.js backend\"",
+    "build": "npm run migrate",
     "postinstall": "echo \"Dependencies installed successfully\"",
     "test-services": "node -e \"require('./src/services/LoggerService').runTest(); require('./src/services/UtilsService').runTests();\"",
     "clean-logs": "node -e \"require('./src/services/LoggerService').cleanOldLogs(7);\"",

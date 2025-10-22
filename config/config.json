@@ -1,26 +1,46 @@
 {
   "development": {
-    "username": "postgres",
-    "password": "1234",
-    "database": "Alumnos_Prueba",
-    "host": "localhost",
-    "port": 5432,
-    "dialect": "postgres"
+    "username": "ulam5pv9uubznq8qehvc",
+    "password": "70fySUUjKpbV9zprPFOshYtER4Nt5U",
+    "database": "bnjcjy5rew9nyrsw0yhh",
+    "host": "bnjcjy5rew9nyrsw0yhh-postgresql.services.clever-cloud.com",
+    "port": 50013,
+    "dialect": "postgres",
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    }
   },
   "test": {
-    "username": "postgres",
-    "password": "1234",
-    "database": "Alumnos_Test",
-    "host": "localhost",
-    "port": 5432,
-    "dialect": "postgres"
+    "username": "ulam5pv9uubznq8qehvc",
+    "password": "70fySUUjKpbV9zprPFOshYtER4Nt5U",
+    "database": "bnjcjy5rew9nyrsw0yhh",
+    "host": "bnjcjy5rew9nyrsw0yhh-postgresql.services.clever-cloud.com",
+    "port": 50013,
+    "dialect": "postgres",
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    }
   },
   "production": {
-    "username": "postgres",
-    "password": "1234",
-    "database": "Alumnos_Prod",
-    "host": "localhost",
-    "port": 5432,
-    "dialect": "postgres"
+    "use_env_variable": "DATABASE_URL",
+    "dialect": "postgres",
+    "dialectOptions": {
+      "ssl": {
+        "require": true,
+        "rejectUnauthorized": false
+      }
+    },
+    "pool": {
+      "max": 5,
+      "min": 0,
+      "acquire": 30000,
+      "idle": 10000
+    }
   }
 }
