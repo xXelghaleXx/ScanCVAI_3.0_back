@@ -188,7 +188,7 @@ app.use((req, res) => {
 // 🚨 Middleware global de manejo de errores (debe ir al final)
 app.use(globalErrorHandler);
 
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 10000;
 
 // 🚀 Función de inicialización (MEJORADA)
 const initializeServer = async () => {
