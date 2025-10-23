@@ -2,7 +2,7 @@ const axios = require('axios');
 
 class LlamaService {
   constructor() {
-    this.baseURL = process.env.LLAMA_BASE_URL || 'http://127.0.0.1:1234';
+    this.baseURL = process.env.LLAMA_BASE_URL || 'http://localhost:11434';
     this.client = axios.create({
       baseURL: this.baseURL,
       timeout: 80000, // 60 segundos

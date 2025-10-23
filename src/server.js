@@ -16,18 +16,22 @@ const app = express();
 // ========== CONFIGURACIÓN CORS (AGREGAR DESPUÉS DE CREAR APP) ==========
 const corsOptions = {
   origin: [
-    'http://localhost:5173',    // Vite dev server (React)
-    'http://127.0.0.1:5173',   // Alternativa localhost
-    'http://localhost:3000',   // Self-origin si es necesario
-    'http://localhost:4173',   // Vite preview
+    // URLs de producción
     ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []), // URL desde .env
-    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []) // URLs adicionales desde .env
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []), // URLs adicionales desde .env
+    // URLs de desarrollo (solo en modo desarrollo)
+    ...(process.env.NODE_ENV !== 'production' ? [
+      'http://localhost:5173',    // Vite dev server (React)
+      'http://127.0.0.1:5173',   // Alternativa localhost
+      'http://localhost:3000',   // Self-origin si es necesario
+      'http://localhost:4173'    // Vite preview
+    ] : [])
   ],
   credentials: true,           // Permitir cookies y auth headers
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
   allowedHeaders: [
-    'Content-Type', 
-    'Authorization', 
+    'Content-Type',
+    'Authorization',
     'X-Requested-With',
     'Accept',
     'Origin',

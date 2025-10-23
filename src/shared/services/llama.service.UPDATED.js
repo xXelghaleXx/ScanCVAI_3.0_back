@@ -8,7 +8,7 @@ class LlamaService {
     this.openaiApiKey = process.env.OPENAI_API_KEY || null;
 
     // Cliente para Llama local
-    this.localBaseURL = process.env.LLAMA_BASE_URL || 'http://127.0.0.1:1234';
+    this.localBaseURL = process.env.LLAMA_BASE_URL || 'http://localhost:11434';
     this.localClient = axios.create({
       baseURL: this.localBaseURL,
       timeout: 80000,
