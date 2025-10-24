@@ -13,10 +13,11 @@ if (process.env.DATABASE_URL) {
     dialect: "postgres",
     logging: false, // Desactivar logging en producción
     pool: {
-      max: 5,
+      max: 2, // Reducido para Clever Cloud free tier (límite de conexiones bajo)
       min: 0,
-      acquire: 30000,
-      idle: 10000
+      acquire: 60000, // Aumentado timeout para adquirir conexión
+      idle: 10000,
+      evict: 10000 // Tiempo para liberar conexiones inactivas
     },
     dialectOptions: {
       ssl: (process.env.NODE_ENV === "production" || isCleverCloud) ? {

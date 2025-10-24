@@ -341,30 +341,23 @@ class AdminController {
   // 📊 Dashboard con estadísticas generales de todos los usuarios
   static async obtenerDashboardGeneral(req, res) {
     try {
-      // Estadísticas generales
-      const [
-        totalUsuarios,
-        totalCVs,
-        totalEntrevistas,
-        totalInformes,
-        usuariosActivos,
-        promedioGeneralEntrevistas,
-        distribucionRoles,
-        distribucionEstados
-      ] = await Promise.all([
-        // Total de usuarios
+      // Estadísticas generales - OPTIMIZADO: Hacer consultas en lotes pequeños
+      // para no saturar el pool de conexiones de Clever Cloud (max 2-3 conexiones)
+
+      // Bloque 1: Conteos básicos (max 2 conexiones simultáneas)
+      const [totalUsuarios, totalCVs] = await Promise.all([
         Alumno.count(),
+        CV.count()
+      ]);
 
-        // Total de CVs
-        CV.count(),
-
-        // Total de entrevistas
+      // Bloque 2: Más conteos
+      const [totalEntrevistas, totalInformes] = await Promise.all([
         Entrevista.count(),
+        Informe.count()
+      ]);
 
-        // Total de informes
-        Informe.count(),
-
-        // Usuarios activos (último acceso < 30 días)
+      // Bloque 3: Usuarios activos y promedio
+      const [usuariosActivos, promedioGeneralEntrevistas] = await Promise.all([
         Alumno.count({
           where: {
             fecha_ultimo_acceso: {
@@ -372,8 +365,6 @@ class AdminController {
             }
           }
         }),
-
-        // Promedio general de entrevistas
         Entrevista.findOne({
           where: {
             promedio_puntuacion: { [Op.not]: null }
@@ -382,9 +373,11 @@ class AdminController {
             [sequelize.fn('AVG', sequelize.col('promedio_puntuacion')), 'promedio']
           ],
           raw: true
-        }),
+        })
+      ]);
 
-        // Distribución por roles
+      // Bloque 4: Distribuciones
+      const [distribucionRoles, distribucionEstados] = await Promise.all([
         Alumno.findAll({
           attributes: [
             'rol',
@@ -393,8 +386,6 @@ class AdminController {
           group: ['rol'],
           raw: true
         }),
-
-        // Distribución por estados
         Alumno.findAll({
           attributes: [
             'estado',
@@ -409,8 +400,8 @@ class AdminController {
       const fechaInicio = new Date();
       fechaInicio.setMonth(fechaInicio.getMonth() - 6);
 
-      // Obtener datos mensuales de forma más compatible
-      const [usuariosRaw, cvsRaw, entrevistasRaw] = await Promise.all([
+      // Obtener datos mensuales - OPTIMIZADO: En lotes de 2 consultas
+      const [usuariosRaw, cvsRaw] = await Promise.all([
         Alumno.findAll({
           where: {
             createdAt: { [Op.gte]: fechaInicio }
@@ -424,15 +415,17 @@ class AdminController {
           },
           attributes: ['fecha_creacion'],
           raw: true
-        }),
-        Entrevista.findAll({
-          where: {
-            fecha: { [Op.gte]: fechaInicio }
-          },
-          attributes: ['fecha'],
-          raw: true
         })
       ]);
+
+      // Consulta separada para no saturar el pool
+      const entrevistasRaw = await Entrevista.findAll({
+        where: {
+          fecha: { [Op.gte]: fechaInicio }
+        },
+        attributes: ['fecha'],
+        raw: true
+      });
 
       // Agrupar por mes manualmente
       const agruparPorMes = (datos, campo) => {
