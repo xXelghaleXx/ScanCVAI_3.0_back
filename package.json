@@ -56,6 +56,9 @@
     "node": ">=16.0.0",
     "npm": ">=8.0.0"
   },
+  "puppeteer": {
+    "skipDownload": true
+  },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/sunvenlay/3.0_InteArtiCv_Back.git"

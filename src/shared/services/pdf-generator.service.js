@@ -633,15 +633,28 @@ class PDFGenerator {
       // Generar HTML
       const html = this.generateHTML(data);
 
+      // Configuración para producción (Render.com)
+      const isProduction = process.env.NODE_ENV === 'production';
+
       // Lanzar navegador headless
       browser = await puppeteer.launch({
-        headless: true,
+        headless: 'new',
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
           '--disable-dev-shm-usage',
-          '--disable-gpu'
-        ]
+          '--disable-gpu',
+          '--disable-software-rasterizer',
+          '--disable-dev-shm-usage',
+          '--disable-extensions',
+          '--no-first-run',
+          '--no-zygote',
+          '--single-process'
+        ],
+        // En producción, usar el ejecutable del sistema si está disponible
+        ...(isProduction && {
+          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
+        })
       });
 
       const page = await browser.newPage();
