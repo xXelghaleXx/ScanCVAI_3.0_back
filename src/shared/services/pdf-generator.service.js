@@ -633,8 +633,8 @@ class PDFGenerator {
       // Generar HTML
       const html = this.generateHTML(data);
 
-      // Lanzar navegador headless con configuración optimizada para Render
-      browser = await puppeteer.launch({
+      // Configuración para encontrar Chrome en Render
+      const launchOptions = {
         headless: 'new',
         args: [
           '--no-sandbox',
@@ -650,7 +650,15 @@ class PDFGenerator {
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding'
         ]
-      });
+      };
+
+      // En producción (Render), usar variable de entorno si existe
+      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      }
+
+      // Lanzar navegador
+      browser = await puppeteer.launch(launchOptions);
 
       const page = await browser.newPage();
 
