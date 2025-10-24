@@ -1,4 +1,4 @@
-const { syncModels, Carrera } = require("../database/models");
+const { syncModels, Carrera } = require("../models");
 
 async function seedCarreras() {
   try {

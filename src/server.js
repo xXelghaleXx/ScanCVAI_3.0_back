@@ -1,3 +1,6 @@
+// ⚡ IMPORTANTE: Cargar .env PRIMERO antes de importar servicios
+require("dotenv").config();
+
 const express = require("express");
 const cors = require("cors"); // ← AGREGAR ESTA LÍNEA
 const { syncModels } = require("./database/models");
@@ -9,7 +12,6 @@ const logger = require("./shared/services/logger.service");
 const llamaService = require("./shared/services/llama.service");
 const fileExtractorService = require("./shared/services/file-extractor.service");
 const utilsService = require("./shared/services/utils.service");
-require("dotenv").config();
 
 const app = express();
 
@@ -212,7 +214,7 @@ const initializeServer = async () => {
 
     // 2. Sincronizar base de datos
     logger.info("🔄 Sincronizando base de datos...");
-    await syncModels({ alter: true });
+    await syncModels({ alter: false }); // No alterar tablas existentes (más rápido)
     logger.databaseConnected();
 
     // 3. Verificar servicios (Llama es opcional)

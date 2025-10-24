@@ -2,26 +2,88 @@ const axios = require('axios');
 
 class LlamaService {
   constructor() {
-    this.baseURL = process.env.LLAMA_BASE_URL || 'http://localhost:11434';
-    this.client = axios.create({
-      baseURL: this.baseURL,
-      timeout: 80000, // 60 segundos
+    // Soportar múltiples proveedores de IA
+    this.provider = process.env.AI_PROVIDER || 'local'; // 'local', 'groq', 'openai'
+    this.groqApiKey = process.env.GROQ_API_KEY || null;
+    this.openaiApiKey = process.env.OPENAI_API_KEY || null;
+
+    // Cliente para Llama local
+    this.localBaseURL = process.env.LLAMA_BASE_URL || 'http://localhost:11434';
+    this.localClient = axios.create({
+      baseURL: this.localBaseURL,
+      timeout: 80000,
       headers: {
         'Content-Type': 'application/json'
       }
     });
+
+    // Cliente para Groq
+    this.groqClient = axios.create({
+      baseURL: 'https://api.groq.com/openai/v1',
+      timeout: 60000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.groqApiKey}`
+      }
+    });
+
+    // Cliente para OpenAI
+    this.openaiClient = axios.create({
+      baseURL: 'https://api.openai.com/v1',
+      timeout: 60000,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${this.openaiApiKey}`
+      }
+    });
   }
 
-  // 🏥 Verificar conexión con Llama
+  // 🏥 Verificar conexión
   async checkConnection() {
     try {
-      const response = await this.client.get('/v1/models');
-      return {
-        connected: true,
-        models: response.data
-      };
+      // Intentar con el provider configurado
+      if (this.provider === 'groq' && this.groqApiKey) {
+        const response = await this.groqClient.get('/models');
+        return {
+          connected: true,
+          provider: 'groq',
+          models: response.data
+        };
+      } else if (this.provider === 'openai' && this.openaiApiKey) {
+        const response = await this.openaiClient.get('/models');
+        return {
+          connected: true,
+          provider: 'openai',
+          models: response.data
+        };
+      } else {
+        // Por defecto intentar con Llama local
+        const response = await this.localClient.get('/v1/models');
+        return {
+          connected: true,
+          provider: 'local',
+          models: response.data
+        };
+      }
     } catch (error) {
-      console.error('❌ Error conectando con Llama:', error.message);
+      console.warn(`⚠️ ${this.provider} no disponible, intentando fallback...`);
+
+      // Fallback: intentar con Groq si está configurado
+      if (this.provider !== 'groq' && this.groqApiKey) {
+        try {
+          const response = await this.groqClient.get('/models');
+          console.log('✅ Fallback a Groq exitoso');
+          this.provider = 'groq'; // Cambiar provider
+          return {
+            connected: true,
+            provider: 'groq',
+            models: response.data
+          };
+        } catch (groqError) {
+          console.error('❌ Groq también falló');
+        }
+      }
+
       return {
         connected: false,
         error: error.message
@@ -29,51 +91,89 @@ class LlamaService {
     }
   }
 
-  // 💬 Chat completion genérico
+  // 💬 Chat completion genérico (soporta todos los providers)
   async chatCompletion(messages, options = {}) {
-  try {
-    // Si no se especifica modelo, usar el primero disponible
-    let modelToUse = options.model;
-    
-    if (!modelToUse) {
-      const modelsResponse = await this.checkConnection();
-      if (modelsResponse.connected && modelsResponse.models?.data?.length > 0) {
-        modelToUse = modelsResponse.models.data[0].id;
+    try {
+      let client, modelToUse;
+
+      // Determinar cliente y modelo según el provider
+      if (this.provider === 'groq' && this.groqApiKey) {
+        client = this.groqClient;
+        modelToUse = options.model || 'llama-3.1-70b-versatile'; // Modelo gratuito de Groq
+      } else if (this.provider === 'openai' && this.openaiApiKey) {
+        client = this.openaiClient;
+        modelToUse = options.model || 'gpt-3.5-turbo';
       } else {
-        modelToUse = 'meta-llama-3.1-8b-instruct'; // fallback
+        client = this.localClient;
+        // Detectar modelo local automáticamente
+        const modelsResponse = await this.checkConnection();
+        if (modelsResponse.connected && modelsResponse.models?.data?.length > 0) {
+          modelToUse = modelsResponse.models.data[0].id;
+        } else {
+          modelToUse = 'meta-llama-3.1-8b-instruct';
+        }
       }
+
+      const payload = {
+        model: modelToUse,
+        messages: messages,
+        temperature: options.temperature || 0.7,
+        max_tokens: options.max_tokens || 1000,
+        stream: false,
+        ...options
+      };
+
+      const endpoint = this.provider === 'local' ? '/v1/chat/completions' : '/chat/completions';
+      const response = await client.post(endpoint, payload);
+
+      return {
+        success: true,
+        content: response.data.choices[0].message.content,
+        usage: response.data.usage,
+        model: response.data.model,
+        provider: this.provider
+      };
+    } catch (error) {
+      console.error('❌ Error en chat completion:', error.message);
+
+      // Intentar fallback automático a Groq
+      if (this.provider !== 'groq' && this.groqApiKey) {
+        console.log('🔄 Intentando fallback a Groq...');
+        try {
+          const payload = {
+            model: 'llama-3.1-70b-versatile',
+            messages: messages,
+            temperature: options.temperature || 0.7,
+            max_tokens: options.max_tokens || 1000,
+            stream: false
+          };
+
+          const response = await this.groqClient.post('/chat/completions', payload);
+          console.log('✅ Fallback a Groq exitoso');
+
+          return {
+            success: true,
+            content: response.data.choices[0].message.content,
+            usage: response.data.usage,
+            model: response.data.model,
+            provider: 'groq (fallback)'
+          };
+        } catch (fallbackError) {
+          console.error('❌ Fallback a Groq también falló');
+        }
+      }
+
+      return {
+        success: false,
+        error: error.message,
+        details: error.response?.data || null
+      };
     }
-
-    const payload = {
-      model: modelToUse,
-      messages: messages,
-      temperature: options.temperature || 0.7,
-      max_tokens: options.max_tokens || 1000,
-      stream: false,
-      ...options
-    };
-
-    const response = await this.client.post('/v1/chat/completions', payload);
-    
-    return {
-      success: true,
-      content: response.data.choices[0].message.content,
-      usage: response.data.usage,
-      model: response.data.model
-    };
-  } catch (error) {
-    console.error('❌ Error en chat completion:', error.message);
-    return {
-      success: false,
-      error: error.message,
-      details: error.response?.data || null
-    };
   }
-}
 
   // 📄 RF-102: Analizar contenido de CV
-async analizarCV(contenidoTexto, nombreAlumno = '') {
-  const prompt = `Analiza este CV y responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin explicaciones):
+  async analizarCV(contenidoTexto, nombreAlumno = '') {
+    const prompt = `Analiza este CV y responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin explicaciones):
 
 {
   "fortalezas": ["fortaleza1", "fortaleza2"],
@@ -87,66 +187,63 @@ async analizarCV(contenidoTexto, nombreAlumno = '') {
 CV a analizar:
 ${contenidoTexto.substring(0, 1500)}`;
 
-  const messages = [
-    {
-      role: 'system',
-      content: 'Eres un analista de recursos humanos. Responde ÚNICAMENTE con JSON válido, sin markdown ni explicaciones adicionales.'
-    },
-    {
-      role: 'user',
-      content: prompt
+    const messages = [
+      {
+        role: 'system',
+        content: 'Eres un analista de recursos humanos. Responde ÚNICAMENTE con JSON válido, sin markdown ni explicaciones adicionales.'
+      },
+      {
+        role: 'user',
+        content: prompt
+      }
+    ];
+
+    try {
+      const response = await this.chatCompletion(messages, {
+        temperature: 0.2,
+        max_tokens: 600
+      });
+
+      if (!response.success) {
+        throw new Error(response.error);
+      }
+
+      let cleanContent = response.content
+        .replace(/```json\s*/, '')
+        .replace(/```\s*$/, '')
+        .replace(/^\s*["']{3}\s*/, '')
+        .replace(/\s*["']{3}\s*$/, '')
+        .trim();
+
+      const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanContent = jsonMatch[0];
+      }
+
+      console.log(`Respuesta de IA (${response.provider}):`, cleanContent.substring(0, 100) + '...');
+
+      const analisis = JSON.parse(cleanContent);
+
+      return {
+        success: true,
+        analisis: analisis,
+        contenido_extraido: response.content,
+        provider: response.provider
+      };
+    } catch (error) {
+      console.error('Error analizando CV:', error);
+
+      return {
+        success: false,
+        error: error.message,
+        fallback_content: contenidoTexto.substring(0, 500) + '...'
+      };
     }
-  ];
-
-  try {
-    const response = await this.chatCompletion(messages, {
-      temperature: 0.2, // Más determinista
-      max_tokens: 600
-    });
-
-    if (!response.success) {
-      throw new Error(response.error);
-    }
-
-    // Limpiar la respuesta de markdown y caracteres extraños
-    let cleanContent = response.content
-      .replace(/```json\s*/, '')  // Remover ```json al inicio
-      .replace(/```\s*$/, '')     // Remover ``` al final
-      .replace(/^\s*["']{3}\s*/, '') // Remover """ al inicio
-      .replace(/\s*["']{3}\s*$/, '') // Remover """ al final
-      .trim();
-
-    // Buscar el JSON dentro del contenido
-    const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleanContent = jsonMatch[0];
-    }
-
-    console.log('Respuesta limpia de IA:', cleanContent);
-
-    const analisis = JSON.parse(cleanContent);
-    
-    return {
-      success: true,
-      analisis: analisis,
-      contenido_extraido: response.content
-    };
-  } catch (error) {
-    console.error('Error analizando CV:', error);
-    console.error('Contenido recibido:', response?.content);
-    
-    // Fallback con estructura básica
-    return {
-      success: false,
-      error: error.message,
-      fallback_content: contenidoTexto.substring(0, 500) + '...'
-    };
   }
-}
 
   // 🎯 RF-105: Evaluar respuesta de entrevista
-async evaluarRespuestaEntrevista(pregunta, respuesta, contexto = '') {
-  const prompt = `Evalúa esta respuesta de entrevista y responde ÚNICAMENTE con JSON válido:
+  async evaluarRespuestaEntrevista(pregunta, respuesta, contexto = '') {
+    const prompt = `Evalúa esta respuesta de entrevista y responde ÚNICAMENTE con JSON válido:
 
 {
   "puntuacion": 8,
@@ -159,61 +256,61 @@ async evaluarRespuestaEntrevista(pregunta, respuesta, contexto = '') {
 Pregunta: ${pregunta}
 Respuesta: ${respuesta}`;
 
-  const messages = [
-    {
-      role: 'system',
-      content: 'Eres un entrevistador de RRHH. Responde ÚNICAMENTE con JSON válido, sin markdown.'
-    },
-    {
-      role: 'user',
-      content: prompt
-    }
-  ];
-
-  try {
-    const response = await this.chatCompletion(messages, {
-      temperature: 0.3,
-      max_tokens: 400
-    });
-
-    if (!response.success) {
-      throw new Error(response.error);
-    }
-
-    // Misma limpieza que arriba
-    let cleanContent = response.content
-      .replace(/```json\s*/, '')
-      .replace(/```\s*$/, '')
-      .replace(/^\s*["']{3}\s*/, '')
-      .replace(/\s*["']{3}\s*$/, '')
-      .trim();
-
-    const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      cleanContent = jsonMatch[0];
-    }
-
-    const evaluacion = JSON.parse(cleanContent);
-    
-    return {
-      success: true,
-      evaluacion: evaluacion
-    };
-  } catch (error) {
-    console.error('Error evaluando respuesta:', error);
-    return {
-      success: false,
-      error: error.message,
-      fallback: {
-        puntuacion: 7,
-        retroalimentacion: 'Respuesta registrada. Evaluación pendiente.',
-        fortalezas: ['Participación activa'],
-        areas_mejora: ['Evaluación pendiente'],
-        sugerencias: ['Continúa practicando']
+    const messages = [
+      {
+        role: 'system',
+        content: 'Eres un entrevistador de RRHH. Responde ÚNICAMENTE con JSON válido, sin markdown.'
+      },
+      {
+        role: 'user',
+        content: prompt
       }
-    };
+    ];
+
+    try {
+      const response = await this.chatCompletion(messages, {
+        temperature: 0.3,
+        max_tokens: 400
+      });
+
+      if (!response.success) {
+        throw new Error(response.error);
+      }
+
+      let cleanContent = response.content
+        .replace(/```json\s*/, '')
+        .replace(/```\s*$/, '')
+        .replace(/^\s*["']{3}\s*/, '')
+        .replace(/\s*["']{3}\s*$/, '')
+        .trim();
+
+      const jsonMatch = cleanContent.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        cleanContent = jsonMatch[0];
+      }
+
+      const evaluacion = JSON.parse(cleanContent);
+
+      return {
+        success: true,
+        evaluacion: evaluacion,
+        provider: response.provider
+      };
+    } catch (error) {
+      console.error('Error evaluando respuesta:', error);
+      return {
+        success: false,
+        error: error.message,
+        fallback: {
+          puntuacion: 7,
+          retroalimentacion: 'Respuesta registrada. Evaluación pendiente.',
+          fortalezas: ['Participación activa'],
+          areas_mejora: ['Evaluación pendiente'],
+          sugerencias: ['Continúa practicando']
+        }
+      };
+    }
   }
-}
 
   // 🤖 RF-104: Generar pregunta de seguimiento inteligente
   async generarPreguntaSeguimiento(preguntaAnterior, respuestaAnterior, tipoEntrevista = 'general') {
@@ -255,7 +352,8 @@ Responde ÚNICAMENTE con la pregunta, sin texto adicional.`;
 
       return {
         success: true,
-        pregunta: response.content.trim()
+        pregunta: response.content.trim(),
+        provider: response.provider
       };
     } catch (error) {
       console.error('❌ Error generando pregunta:', error);
@@ -301,7 +399,8 @@ El tono debe ser profesional y constructivo.`;
 
       return {
         success: true,
-        resumen: response.success ? response.content : 'Resumen pendiente de generación'
+        resumen: response.success ? response.content : 'Resumen pendiente de generación',
+        provider: response.provider
       };
     } catch (error) {
       console.error('❌ Error generando resumen:', error);
@@ -315,8 +414,8 @@ El tono debe ser profesional y constructivo.`;
 
   // 🔄 Test de conectividad
   async testConnection() {
-    console.log('🧪 Probando conexión con Llama 3.1...');
-    
+    console.log(`🧪 Probando conexión con ${this.provider.toUpperCase()}...`);
+
     const testMessage = [
       {
         role: 'user',
@@ -330,7 +429,7 @@ El tono debe ser profesional y constructivo.`;
     });
 
     if (result.success) {
-      console.log('✅ Conexión con Llama exitosa:', result.content);
+      console.log(`✅ Conexión exitosa con ${result.provider}:`, result.content);
     } else {
       console.log('❌ Error de conexión:', result.error);
     }
