@@ -106,14 +106,39 @@ const limpiarTokensAntiguos = async (alumnoId) => {
 
 exports.register = async (req, res) => {
   try {
-    const { nombre, correo, contrasena } = req.body;
+    const { nombre, correo, contrasena, rol } = req.body;
 
     const existe = await Alumno.findOne({ where: { correo } });
     if (existe) return res.status(400).json({ error: "Correo ya registrado" });
 
-    const alumno = await Alumno.create({ nombre, correo, contrasena });
+    // Validar rol si se proporciona (acepta 'admin' como alias de 'administrador')
+    let rolValido = 'alumno';
+    if (rol) {
+      if (rol === 'administrador' || rol === 'admin') {
+        rolValido = 'administrador';
+      } else if (rol === 'alumno') {
+        rolValido = 'alumno';
+      }
+    }
 
-    res.json({ message: "Alumno registrado con éxito", alumno });
+    const alumno = await Alumno.create({
+      nombre,
+      correo,
+      contrasena,
+      rol: rolValido,
+      estado: 'activo',
+      intentos_fallidos: 0
+    });
+
+    res.json({
+      message: "Usuario registrado con éxito",
+      alumno: {
+        id: alumno.id,
+        nombre: alumno.nombre,
+        correo: alumno.correo,
+        rol: alumno.rol
+      }
+    });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
