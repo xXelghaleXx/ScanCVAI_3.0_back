@@ -633,10 +633,7 @@ class PDFGenerator {
       // Generar HTML
       const html = this.generateHTML(data);
 
-      // Configuración para producción (Render.com)
-      const isProduction = process.env.NODE_ENV === 'production';
-
-      // Lanzar navegador headless
+      // Lanzar navegador headless con configuración optimizada para Render
       browser = await puppeteer.launch({
         headless: 'new',
         args: [
@@ -645,16 +642,14 @@ class PDFGenerator {
           '--disable-dev-shm-usage',
           '--disable-gpu',
           '--disable-software-rasterizer',
-          '--disable-dev-shm-usage',
           '--disable-extensions',
           '--no-first-run',
           '--no-zygote',
-          '--single-process'
-        ],
-        // En producción, usar el ejecutable del sistema si está disponible
-        ...(isProduction && {
-          executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium-browser'
-        })
+          '--single-process',
+          '--disable-background-timer-throttling',
+          '--disable-backgrounding-occluded-windows',
+          '--disable-renderer-backgrounding'
+        ]
       });
 
       const page = await browser.newPage();
