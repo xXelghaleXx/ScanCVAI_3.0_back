@@ -18,45 +18,13 @@ const RespuestaEntrevista = require("./RespuestaEntrevista");
 const HistorialEntrevista = require("./HistorialEntrevista");
 
 // ===== ASOCIACIONES =====
-
-// Asociaciones de Alumno
-Alumno.hasMany(CV, {
-  foreignKey: 'alumnoId',
-  as: 'cvs'
-});
-
-Alumno.hasMany(Entrevista, {
-  foreignKey: 'alumnoId',
-  as: 'entrevistas'
-});
-
-Alumno.hasMany(Token, {
-  foreignKey: 'alumnoId',
-  as: 'tokens'
-});
-
-// Asociaciones de CV
-CV.belongsTo(Alumno, {
-  foreignKey: 'alumnoId',
-  as: 'alumno'
-});
-
-CV.hasMany(Informe, {
-  foreignKey: 'cvId',
-  as: 'informes'
-});
-
-// Asociaciones de Informe
-Informe.belongsTo(CV, {
-  foreignKey: 'cvId',
-  as: 'cv'
-});
-
-// Asociaciones de Token
-Token.belongsTo(Alumno, {
-  foreignKey: 'alumnoId',
-  as: 'alumno'
-});
+// NOTA: Las siguientes asociaciones YA están definidas en sus archivos de modelo:
+// - CV ↔ Alumno (en CV.js)
+// - Informe ↔ CV (en Informe.js)
+// - Token ↔ Alumno (en Token.js)
+// - CVHabilidad ↔ CV y Habilidad (en CVHabilidad.js)
+// - Habilidad ↔ TipoHabilidad (en Habilidad.js)
+// - InformeFortalezas/Habilidades/AreasMejora ↔ Informe (en sus archivos respectivos)
 
 // Asociaciones de Entrevista
 Entrevista.belongsTo(Alumno, {
@@ -67,6 +35,11 @@ Entrevista.belongsTo(Alumno, {
 Entrevista.belongsTo(Carrera, {
   foreignKey: 'carreraId',
   as: 'carrera'
+});
+
+Alumno.hasMany(Entrevista, {
+  foreignKey: 'alumnoId',
+  as: 'entrevistas'
 });
 
 Carrera.hasMany(Entrevista, {

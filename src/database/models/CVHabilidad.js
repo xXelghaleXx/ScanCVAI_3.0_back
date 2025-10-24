@@ -46,7 +46,7 @@ Habilidad.belongsToMany(CV, {
   through: CVHabilidad,
   foreignKey: 'habilidadId',
   otherKey: 'cvId',
-  as: 'cvs'
+  as: 'cvs_con_habilidad' // Cambiado para evitar conflicto con Alumno.cvs
 });
 
 // Asociaciones directas para acceder a la tabla intermedia
