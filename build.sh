@@ -4,7 +4,5 @@
 echo "📦 Instalando dependencias npm..."
 npm install
 
-echo "🌐 Instalando Chrome para Puppeteer..."
-npx puppeteer browsers install chrome
-
 echo "✅ Build completado"
+echo "ℹ️ Chrome se instalará automáticamente con @sparticuz/chromium"

@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const chromium = require('@sparticuz/chromium');
 
 /**
  * Genera un PDF profesional y clásico para el informe de CV
@@ -633,9 +634,15 @@ class PDFGenerator {
       // Generar HTML
       const html = this.generateHTML(data);
 
-      // Configuración para encontrar Chrome en Render
+      console.log('🔧 Configurando Puppeteer para generar PDF...');
+      console.log('🌍 Entorno:', process.env.NODE_ENV || 'development');
+
+      // Determinar si estamos en producción
+      const isProduction = process.env.NODE_ENV === 'production' || process.env.RENDER === 'true';
+
+      // Configuración base para Chrome
       const launchOptions = {
-        headless: 'new',
+        headless: true,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -652,13 +659,23 @@ class PDFGenerator {
         ]
       };
 
-      // En producción (Render), usar variable de entorno si existe
-      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
-        launchOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      if (isProduction) {
+        console.log('🚀 Configuración para PRODUCCIÓN (Render/Serverless)');
+
+        // Usar chromium de @sparticuz/chromium en producción
+        launchOptions.executablePath = await chromium.executablePath();
+        launchOptions.args = chromium.args;
+
+        console.log('✅ Chrome path:', launchOptions.executablePath);
+      } else {
+        console.log('💻 Configuración para DESARROLLO local');
+        // En desarrollo local, Puppeteer usará su Chrome incluido
       }
 
       // Lanzar navegador
+      console.log('🌐 Lanzando navegador...');
       browser = await puppeteer.launch(launchOptions);
+      console.log('✅ Navegador lanzado correctamente');
 
       const page = await browser.newPage();
 

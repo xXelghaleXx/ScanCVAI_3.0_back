@@ -276,6 +276,20 @@ exports.googleLogin = async (req, res) => {
       });
     }
 
+    // VALIDACIÓN DE DOMINIO TECSUP
+    if (!email || !email.toLowerCase().endsWith('@tecsup.edu.pe')) {
+      logger.warn('Intento de acceso con dominio no autorizado', {
+        email,
+        ip: req.ip
+      });
+      return res.status(403).json({
+        error: "Solo se permite el acceso con correos institucionales @tecsup.edu.pe",
+        code: "UNAUTHORIZED_DOMAIN"
+      });
+    }
+
+    logger.info('Dominio Tecsup verificado', { email });
+
     let alumno = await Alumno.findOne({ where: { correo: email } });
 
     if (!alumno) {
