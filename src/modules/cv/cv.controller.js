@@ -14,6 +14,7 @@ const llamaService = require("../../shared/services/llama.service");
 const fileExtractorService = require("../../shared/services/file-extractor.service");
 const utilsService = require("../../shared/services/utils.service");
 const logger = require("../../shared/services/logger.service");
+const cvScoringService = require("../../shared/services/cv-scoring.service");
 
 class CVController {
   
@@ -155,6 +156,15 @@ class CVController {
       // 6. Generar el informe automáticamente
       const informe = await CVController._generarInformeDesdeAnalisis(cv, analisisIA.analisis);
 
+      // 7. Calcular scoring del CV
+      const scoringResult = cvScoringService.calcularPuntuacionCV(
+        validation,
+        analisisIA.analisis,
+        extractionResult.stats
+      );
+
+      const metricsAnalysis = cvScoringService.generarAnalisisMetricas(scoringResult);
+
       const processingTime = Date.now() - startTime;
       logger.cvProcessed(alumnoId, cvId, processingTime);
 
@@ -176,8 +186,18 @@ class CVController {
           experiencia_resumen: analisisIA.analisis.experiencia_resumen || "",
           educacion_resumen: analisisIA.analisis.educacion_resumen || ""
         },
+        scoring: {
+          puntuacion_final: scoringResult.puntuacion_final,
+          es_cv_ideal: scoringResult.es_cv_ideal,
+          nivel_cv: scoringResult.nivel_cv,
+          metricas: scoringResult.metricas,
+          desglose: scoringResult.desglose_puntos,
+          analisis_metricas: metricsAnalysis,
+          recomendacion: scoringResult.recomendacion
+        },
         stats: extractionResult.stats,
-        ready_for_report: true
+        ready_for_report: true,
+        mostrar_scoring: scoringResult.es_cv_ideal // Frontend decidirá qué mostrar
       });
 
     } catch (error) {
