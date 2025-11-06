@@ -22,6 +22,12 @@ const Entrevista = sequelize.define("Entrevista", {
     allowNull: false,
     defaultValue: 'intermedia'
   },
+  modalidad: {
+    type: DataTypes.ENUM('chat', 'voz'),
+    allowNull: false,
+    defaultValue: 'chat',
+    comment: 'Modalidad de la entrevista: chat o voz'
+  },
   estado: {
     type: DataTypes.ENUM('iniciada', 'en_progreso', 'completada', 'abandonada'),
     allowNull: false,

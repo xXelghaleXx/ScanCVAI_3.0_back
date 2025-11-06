@@ -14,18 +14,24 @@ class EntrevistaController {
   static async iniciarEntrevista(req, res) {
     try {
       const alumnoId = req.user.id;
-      const { carreraId, dificultad = 'intermedia' } = req.body;
+      const { carreraId, dificultad = 'intermedia', modalidad = 'chat' } = req.body;
 
       // Validaciones
       if (!carreraId) {
-        return res.status(400).json({ 
-          error: "ID de carrera requerido" 
+        return res.status(400).json({
+          error: "ID de carrera requerido"
         });
       }
 
       if (!['basica', 'intermedia', 'avanzada'].includes(dificultad)) {
-        return res.status(400).json({ 
-          error: "Dificultad debe ser: basica, intermedia o avanzada" 
+        return res.status(400).json({
+          error: "Dificultad debe ser: basica, intermedia o avanzada"
+        });
+      }
+
+      if (!['chat', 'voz'].includes(modalidad)) {
+        return res.status(400).json({
+          error: "Modalidad debe ser: chat o voz"
         });
       }
 
@@ -68,6 +74,7 @@ class EntrevistaController {
           alumnoId,
           carreraId,
           dificultad,
+          modalidad,
           estado: 'en_progreso',
           historial_conversacion: inicioIA.historial || [],
           promedio_puntuacion: null,
