@@ -293,8 +293,19 @@ exports.googleLogin = async (req, res) => {
     let alumno = await Alumno.findOne({ where: { correo: email } });
 
     if (!alumno) {
+      // Extraer nombre del email: primer nombre antes del punto o antes del @
+      let nombreExtraido = name;
+      if (!nombreExtraido) {
+        const emailPart = email.split('@')[0];
+        // Si hay punto, tomar solo el primer nombre
+        const nombreParts = emailPart.split('.');
+        nombreExtraido = nombreParts[0];
+        // Capitalizar primera letra
+        nombreExtraido = nombreExtraido.charAt(0).toUpperCase() + nombreExtraido.slice(1).toLowerCase();
+      }
+
       alumno = await Alumno.create({
-        nombre: name || email.split('@')[0],
+        nombre: nombreExtraido,
         correo: email,
         contrasena: Math.random().toString(36).slice(-8),
         estado: 'activo',
