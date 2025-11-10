@@ -1,292 +1,340 @@
 /**
- * ScoringService - Sistema de puntuación inteligente para entrevistas
+ * ScoringService - Sistema de evaluación completo para entrevistas
  *
- * Este servicio calcula puntuaciones basadas en métricas reales:
- * - Cantidad de respuestas (30%)
- * - Densidad/calidad de respuestas (40%)
- * - Consistencia en las respuestas (20%)
- * - Completitud de la entrevista (10%)
- * - Bonus por dificultad
+ * Evalúa 5 dimensiones principales:
+ * 1. Comunicación (25%) - Claridad, coherencia, estructura
+ * 2. Conocimiento Técnico (30%) - Profundidad, precisión
+ * 3. Competencias Blandas (25%) - Actitud, profesionalismo
+ * 4. Completitud (10%) - Cantidad y calidad de respuestas
+ * 5. Coherencia (10%) - Consistencia en las respuestas
  */
 
 class ScoringService {
 
   /**
-   * Calcula la puntuación total de una entrevista
-   * @param {Array} mensajesUsuario - Mensajes enviados por el usuario
-   * @param {Array} mensajesAsistente - Mensajes del entrevistador
-   * @param {String} dificultad - Nivel de dificultad ('basica', 'intermedia', 'avanzada')
-   * @returns {Object} - Puntuación y métricas detalladas
+   * Calcula el scoring completo de una entrevista
+   * @param {Array} entrevista - Array de mensajes de la entrevista
+   * @returns {Object} - Scoring detallado
    */
-  static calcularPuntuacion(mensajesUsuario, mensajesAsistente, dificultad = 'intermedia') {
-    // Validaciones
-    if (!mensajesUsuario || mensajesUsuario.length === 0) {
-      return this.generarPuntuacionMinima();
+  static calcularScoring(entrevista) {
+    if (!entrevista || entrevista.length === 0) {
+      return this.generarScoringVacio();
     }
 
-    // 1. Calcular puntos por cantidad (30%)
-    const puntosCantidad = this.calcularPuntosPorCantidad(mensajesUsuario.length);
+    // Separar mensajes por tipo
+    const preguntasUsuario = entrevista.filter(m => m.tipo === 'usuario' || m.role === 'user');
+    const respuestasIA = entrevista.filter(m => m.tipo === 'ia' || m.role === 'assistant');
 
-    // 2. Calcular puntos por densidad (40%)
-    const { puntosDensidad, densidadPromedio, palabrasPromedio } = this.calcularPuntosPorDensidad(mensajesUsuario);
+    if (preguntasUsuario.length === 0) {
+      return this.generarScoringVacio();
+    }
 
-    // 3. Calcular puntos por consistencia (20%)
-    const { puntosConsistencia, consistencia } = this.calcularPuntosPorConsistencia(mensajesUsuario);
+    // Calcular cada dimensión
+    const scoreComunicacion = this.evaluarComunicacion(preguntasUsuario);
+    const scoreConocimientoTecnico = this.evaluarConocimientoTecnico(preguntasUsuario, respuestasIA);
+    const scoreCompetencias = this.evaluarCompetencias(preguntasUsuario);
+    const scoreCompletitud = this.evaluarCompletitud(preguntasUsuario);
+    const scoreCoherencia = this.evaluarCoherencia(preguntasUsuario);
 
-    // 4. Calcular puntos por completitud (10%)
-    const { puntosCompletitud, completitud } = this.calcularPuntosCompletitud(mensajesUsuario, mensajesAsistente);
-
-    // 5. Calcular puntuación base (0-10)
-    const puntuacionBase = (
-      puntosCantidad * 0.30 +
-      puntosDensidad * 0.40 +
-      puntosConsistencia * 0.20 +
-      puntosCompletitud * 0.10
+    // Calcular puntuación total (ponderada)
+    const scoreTotal = Math.round(
+      scoreComunicacion * 0.25 +
+      scoreConocimientoTecnico * 0.30 +
+      scoreCompetencias * 0.25 +
+      scoreCompletitud * 0.10 +
+      scoreCoherencia * 0.10
     );
 
-    // 6. Aplicar multiplicador por dificultad
-    const multiplicador = this.getMultiplicadorDificultad(dificultad);
+    // Determinar nivel
+    const nivel = this.determinarNivel(scoreTotal);
 
-    // 7. Convertir a escala 0-100
-    const puntuacionFinal = Math.min(100, Math.round(puntuacionBase * multiplicador * 10));
-
-    // 8. Determinar nivel de desempeño
-    const nivelDesempeno = this.determinarNivelDesempeno(puntuacionFinal);
+    // Generar recomendaciones
+    const recomendaciones = this.generarRecomendaciones({
+      comunicacion: scoreComunicacion,
+      conocimientoTecnico: scoreConocimientoTecnico,
+      competencias: scoreCompetencias,
+      completitud: scoreCompletitud,
+      coherencia: scoreCoherencia
+    });
 
     return {
-      puntuacion_final: puntuacionFinal,
-      nivel_desempeno: nivelDesempeno,
-      metricas: {
-        cantidad_respuestas: mensajesUsuario.length,
-        densidad_promedio_caracteres: Math.round(densidadPromedio),
-        palabras_promedio: Math.round(palabrasPromedio),
-        consistencia_porcentaje: Math.round(consistencia),
-        completitud_porcentaje: Math.round(completitud),
-        multiplicador_dificultad: multiplicador
+      scoreTotal,
+      nivel,
+      completado: true,
+      totalPreguntas: preguntasUsuario.length,
+      detalles: {
+        comunicacion: scoreComunicacion,
+        conocimientoTecnico: scoreConocimientoTecnico,
+        competencias: scoreCompetencias,
+        completitud: scoreCompletitud,
+        coherencia: scoreCoherencia
       },
-      desglose_puntos: {
-        cantidad: {
-          puntos: parseFloat(puntosCantidad.toFixed(2)),
-          peso: '30%',
-          contribucion: parseFloat((puntosCantidad * 0.30).toFixed(2))
-        },
-        densidad: {
-          puntos: parseFloat(puntosDensidad.toFixed(2)),
-          peso: '40%',
-          contribucion: parseFloat((puntosDensidad * 0.40).toFixed(2))
-        },
-        consistencia: {
-          puntos: parseFloat(puntosConsistencia.toFixed(2)),
-          peso: '20%',
-          contribucion: parseFloat((puntosConsistencia * 0.20).toFixed(2))
-        },
-        completitud: {
-          puntos: parseFloat(puntosCompletitud.toFixed(2)),
-          peso: '10%',
-          contribucion: parseFloat((puntosCompletitud * 0.10).toFixed(2))
-        },
-        base: parseFloat(puntuacionBase.toFixed(2)),
-        multiplicador: multiplicador
-      }
+      recomendaciones
     };
   }
 
   /**
-   * Calcula puntos basados en la cantidad de respuestas
-   * Escala: 1-2 resp = 3pts, 3-4 = 5pts, 5-7 = 7pts, 8+ = 10pts
+   * Evalúa la comunicación del candidato
    */
-  static calcularPuntosPorCantidad(cantidad) {
-    if (cantidad >= 8) return 10;
-    if (cantidad >= 5) return 7;
-    if (cantidad >= 3) return 5;
-    if (cantidad >= 1) return 3;
-    return 0;
+  static evaluarComunicacion(preguntas) {
+    let score = 0;
+    const total = preguntas.length;
+
+    preguntas.forEach(p => {
+      const texto = (p.texto || p.content || '').toLowerCase();
+      const palabras = texto.trim().split(/\s+/).length;
+      const oraciones = texto.split(/[.!?]+/).filter(s => s.trim()).length;
+
+      // Longitud adecuada (0-35 pts)
+      if (palabras >= 50) score += 35 / total;
+      else if (palabras >= 30) score += 25 / total;
+      else if (palabras >= 15) score += 15 / total;
+      else score += 5 / total;
+
+      // Estructura (0-35 pts)
+      if (oraciones >= 3) score += 35 / total;
+      else if (oraciones >= 2) score += 25 / total;
+      else score += 10 / total;
+
+      // Uso de conectores (0-30 pts)
+      const conectores = ['porque', 'entonces', 'además', 'sin embargo', 'por lo tanto', 'asimismo', 'por ejemplo'];
+      const tieneConectores = conectores.some(c => texto.includes(c));
+      if (tieneConectores) score += 30 / total;
+      else score += 10 / total;
+    });
+
+    return Math.min(100, Math.round(score));
   }
 
   /**
-   * Calcula puntos basados en la densidad y calidad de las respuestas
-   * Considera tanto caracteres como palabras
+   * Evalúa el conocimiento técnico
    */
-  static calcularPuntosPorDensidad(mensajes) {
-    const longitudes = mensajes.map(m => m.content.length);
-    const palabras = mensajes.map(m => m.content.trim().split(/\s+/).length);
+  static evaluarConocimientoTecnico(preguntas, respuestasIA) {
+    let score = 0;
+    const total = preguntas.length;
 
-    const densidadPromedio = longitudes.reduce((a, b) => a + b, 0) / longitudes.length;
-    const palabrasPromedio = palabras.reduce((a, b) => a + b, 0) / palabras.length;
+    preguntas.forEach((p, index) => {
+      const texto = (p.texto || p.content || '').toLowerCase();
+      const palabras = texto.trim().split(/\s+/).length;
 
-    let puntos = 0;
+      // Profundidad (0-40 pts)
+      if (palabras >= 60) score += 40 / total;
+      else if (palabras >= 40) score += 30 / total;
+      else if (palabras >= 20) score += 20 / total;
+      else score += 10 / total;
 
-    // Basado en caracteres promedio
-    if (densidadPromedio >= 300) puntos = 10;
-    else if (densidadPromedio >= 150) puntos = 8;
-    else if (densidadPromedio >= 50) puntos = 5;
-    else puntos = 2;
+      // Términos técnicos (0-35 pts)
+      const terminosTecnicos = ['código', 'función', 'variable', 'clase', 'método', 'algoritmo', 'base de datos',
+                                'api', 'framework', 'librería', 'componente', 'módulo', 'testing', 'debug',
+                                'deployment', 'servidor', 'cliente', 'frontend', 'backend', 'sql'];
+      const terminosEncontrados = terminosTecnicos.filter(t => texto.includes(t)).length;
+      if (terminosEncontrados >= 3) score += 35 / total;
+      else if (terminosEncontrados >= 2) score += 25 / total;
+      else if (terminosEncontrados >= 1) score += 15 / total;
+      else score += 5 / total;
 
-    // Bonus si las respuestas tienen buena cantidad de palabras
-    if (palabrasPromedio >= 50) puntos = Math.min(10, puntos + 1);
-    else if (palabrasPromedio >= 30) puntos = Math.min(10, puntos + 0.5);
+      // Ejemplos concretos (0-25 pts)
+      const tieneEjemplos = texto.includes('ejemplo') || texto.includes('por ejemplo') ||
+                            texto.includes('como') || texto.includes('experiencia');
+      if (tieneEjemplos) score += 25 / total;
+      else score += 10 / total;
+    });
 
+    return Math.min(100, Math.round(score));
+  }
+
+  /**
+   * Evalúa las competencias blandas
+   */
+  static evaluarCompetencias(preguntas) {
+    let score = 0;
+    const total = preguntas.length;
+
+    preguntas.forEach(p => {
+      const texto = (p.texto || p.content || '').toLowerCase();
+
+      // Proactividad (0-35 pts)
+      const palabrasProactividad = ['mejora', 'optimizar', 'aprender', 'desarrollar', 'proyecto', 'iniciativa'];
+      const tieneProactividad = palabrasProactividad.some(pal => texto.includes(pal));
+      if (tieneProactividad) score += 35 / total;
+      else score += 15 / total;
+
+      // Trabajo en equipo (0-35 pts)
+      const palabrasEquipo = ['equipo', 'colabor', 'grupo', 'compañero', 'juntos', 'coordinación'];
+      const tieneEquipo = palabrasEquipo.some(pal => texto.includes(pal));
+      if (tieneEquipo) score += 35 / total;
+      else score += 15 / total;
+
+      // Resolución de problemas (0-30 pts)
+      const palabrasProblemas = ['problema', 'solución', 'resolver', 'challenge', 'desafío', 'obstáculo'];
+      const tieneProblemas = palabrasProblemas.some(pal => texto.includes(pal));
+      if (tieneProblemas) score += 30 / total;
+      else score += 10 / total;
+    });
+
+    return Math.min(100, Math.round(score));
+  }
+
+  /**
+   * Evalúa la completitud de la entrevista
+   */
+  static evaluarCompletitud(preguntas) {
+    const cantidad = preguntas.length;
+    const palabrasTotales = preguntas.reduce((sum, p) => {
+      const texto = p.texto || p.content || '';
+      return sum + texto.trim().split(/\s+/).length;
+    }, 0);
+    const palabrasPromedio = palabrasTotales / cantidad;
+
+    let score = 0;
+
+    // Cantidad de respuestas (0-50 pts)
+    if (cantidad >= 15) score += 50;
+    else if (cantidad >= 10) score += 40;
+    else if (cantidad >= 7) score += 30;
+    else if (cantidad >= 5) score += 20;
+    else score += 10;
+
+    // Profundidad promedio (0-50 pts)
+    if (palabrasPromedio >= 40) score += 50;
+    else if (palabrasPromedio >= 25) score += 35;
+    else if (palabrasPromedio >= 15) score += 20;
+    else score += 10;
+
+    return Math.min(100, Math.round(score));
+  }
+
+  /**
+   * Evalúa la coherencia de las respuestas
+   */
+  static evaluarCoherencia(preguntas) {
+    if (preguntas.length < 2) return 100;
+
+    const longitudes = preguntas.map(p => {
+      const texto = p.texto || p.content || '';
+      return texto.length;
+    });
+
+    const promedio = longitudes.reduce((a, b) => a + b, 0) / longitudes.length;
+    const desviacion = Math.sqrt(
+      longitudes.reduce((sum, val) => sum + Math.pow(val - promedio, 2), 0) / longitudes.length
+    );
+
+    const coeficienteVariacion = promedio > 0 ? (desviacion / promedio) : 0;
+
+    // Calcular score basado en consistencia
+    let score = 100;
+    if (coeficienteVariacion > 1.0) score = 50;
+    else if (coeficienteVariacion > 0.7) score = 60;
+    else if (coeficienteVariacion > 0.5) score = 75;
+    else if (coeficienteVariacion > 0.3) score = 85;
+
+    return Math.round(score);
+  }
+
+  /**
+   * Determina el nivel de desempeño
+   */
+  static determinarNivel(score) {
+    if (score >= 90) return { nombre: 'Excelente', color: '#10b981', descripcion: 'Desempeño sobresaliente' };
+    if (score >= 80) return { nombre: 'Muy Bueno', color: '#3b82f6', descripcion: 'Desempeño destacado' };
+    if (score >= 70) return { nombre: 'Bueno', color: '#8b5cf6', descripcion: 'Buen desempeño' };
+    if (score >= 60) return { nombre: 'Regular', color: '#f59e0b', descripcion: 'Desempeño satisfactorio' };
+    if (score >= 50) return { nombre: 'Aceptable', color: '#f97316', descripcion: 'Desempeño aceptable' };
+    return { nombre: 'Necesita Mejorar', color: '#ef4444', descripcion: 'Requiere desarrollo' };
+  }
+
+  /**
+   * Genera recomendaciones personalizadas
+   */
+  static generarRecomendaciones(scores) {
+    const recomendaciones = [];
+
+    // Ordenar dimensiones por score (menor a mayor)
+    const dimensiones = [
+      { nombre: 'Comunicación', score: scores.comunicacion, categoria: 'comunicacion' },
+      { nombre: 'Conocimiento Técnico', score: scores.conocimientoTecnico, categoria: 'tecnico' },
+      { nombre: 'Competencias Blandas', score: scores.competencias, categoria: 'competencias' },
+      { nombre: 'Completitud', score: scores.completitud, categoria: 'completitud' },
+      { nombre: 'Coherencia', score: scores.coherencia, categoria: 'coherencia' }
+    ].sort((a, b) => a.score - b.score);
+
+    // Generar recomendaciones para las 3 dimensiones más bajas
+    dimensiones.slice(0, 3).forEach((dim, index) => {
+      const mensajes = this.obtenerMensajesRecomendacion(dim.categoria, dim.score);
+      recomendaciones.push({
+        prioridad: index + 1,
+        categoria: dim.nombre,
+        score: dim.score,
+        mensaje: mensajes
+      });
+    });
+
+    return recomendaciones;
+  }
+
+  /**
+   * Obtiene mensajes de recomendación según categoría y score
+   */
+  static obtenerMensajesRecomendacion(categoria, score) {
+    const mensajes = {
+      comunicacion: score < 70
+        ? 'Desarrolla respuestas más estructuradas usando conectores lógicos y ejemplos concretos'
+        : 'Mejora la claridad agregando más detalles y contexto a tus respuestas',
+      tecnico: score < 70
+        ? 'Profundiza en conceptos técnicos específicos y demuestra conocimiento con ejemplos prácticos'
+        : 'Amplía tu vocabulario técnico y explica implementaciones con mayor detalle',
+      competencias: score < 70
+        ? 'Destaca más tus habilidades de trabajo en equipo y resolución de problemas'
+        : 'Fortalece ejemplos de liderazgo y toma de decisiones en situaciones complejas',
+      completitud: score < 70
+        ? 'Responde con mayor profundidad, apuntando a respuestas de 30-50 palabras mínimo'
+        : 'Mantén la extensión de tus respuestas pero agrega más ejemplos específicos',
+      coherencia: score < 70
+        ? 'Mantén un nivel consistente de detalle en todas tus respuestas'
+        : 'Asegura que todas las respuestas tengan estructura y profundidad similar'
+    };
+
+    return mensajes[categoria] || 'Continúa desarrollando esta área';
+  }
+
+  /**
+   * Verifica si la entrevista fue finalizada por la IA
+   */
+  static verificarEntrevistaFinalizada(mensajeIA) {
+    const texto = (mensajeIA || '').toLowerCase();
+    const frasesFin = [
+      'entrevista ha concluido',
+      'hemos terminado',
+      'finalizado la entrevista',
+      'muchas gracias por tu tiempo',
+      'fin de la entrevista',
+      'entrevista finalizada',
+      'eso es todo por hoy',
+      'ha sido un placer',
+      'termina aquí'
+    ];
+
+    return frasesFin.some(frase => texto.includes(frase));
+  }
+
+  /**
+   * Genera scoring vacío para casos sin datos
+   */
+  static generarScoringVacio() {
     return {
-      puntosDensidad: puntos,
-      densidadPromedio,
-      palabrasPromedio
-    };
-  }
-
-  /**
-   * Calcula puntos basados en la consistencia de las respuestas
-   * Valora respuestas de longitud similar (evita respuestas muy cortas mezcladas con largas)
-   */
-  static calcularPuntosPorConsistencia(mensajes) {
-    if (mensajes.length < 2) {
-      return { puntosConsistencia: 10, consistencia: 100 };
-    }
-
-    const longitudes = mensajes.map(m => m.content.length);
-    const media = longitudes.reduce((a, b) => a + b, 0) / longitudes.length;
-
-    // Calcular desviación estándar
-    const varianza = longitudes.reduce((sum, val) => sum + Math.pow(val - media, 2), 0) / longitudes.length;
-    const desviacionEstandar = Math.sqrt(varianza);
-
-    // Coeficiente de variación (CV)
-    const coeficienteVariacion = media > 0 ? (desviacionEstandar / media) * 100 : 100;
-
-    // Calcular consistencia (inversa del CV)
-    // CV bajo = alta consistencia
-    let consistencia = 100 - Math.min(100, coeficienteVariacion);
-
-    // Calcular puntos (0-10)
-    let puntos = 0;
-    if (consistencia >= 70) puntos = 10;
-    else if (consistencia >= 50) puntos = 7;
-    else if (consistencia >= 30) puntos = 5;
-    else puntos = 3;
-
-    return {
-      puntosConsistencia: puntos,
-      consistencia
-    };
-  }
-
-  /**
-   * Calcula puntos por completitud (porcentaje de preguntas respondidas)
-   */
-  static calcularPuntosCompletitud(mensajesUsuario, mensajesAsistente) {
-    const preguntasRealizadas = mensajesAsistente.length;
-    const respuestasProporcionadas = mensajesUsuario.length;
-
-    if (preguntasRealizadas === 0) {
-      return { puntosCompletitud: 10, completitud: 100 };
-    }
-
-    const completitud = Math.min(100, (respuestasProporcionadas / preguntasRealizadas) * 100);
-
-    let puntos = 0;
-    if (completitud === 100) puntos = 10;
-    else if (completitud >= 75) puntos = 7;
-    else if (completitud >= 50) puntos = 5;
-    else puntos = 2;
-
-    return {
-      puntosCompletitud: puntos,
-      completitud
-    };
-  }
-
-  /**
-   * Retorna el multiplicador según la dificultad
-   */
-  static getMultiplicadorDificultad(dificultad) {
-    const multiplicadores = {
-      'basica': 1.0,
-      'intermedia': 1.1,
-      'avanzada': 1.2
-    };
-
-    return multiplicadores[dificultad] || 1.0;
-  }
-
-  /**
-   * Determina el nivel de desempeño basado en la puntuación
-   */
-  static determinarNivelDesempeno(puntuacion) {
-    if (puntuacion >= 90) return 'Excelente';
-    if (puntuacion >= 80) return 'Muy Bueno';
-    if (puntuacion >= 70) return 'Bueno';
-    if (puntuacion >= 60) return 'Satisfactorio';
-    if (puntuacion >= 50) return 'Regular';
-    return 'Necesita Mejorar';
-  }
-
-  /**
-   * Genera una puntuación mínima para casos sin respuestas
-   */
-  static generarPuntuacionMinima() {
-    return {
-      puntuacion_final: 0,
-      nivel_desempeno: 'Sin Evaluar',
-      metricas: {
-        cantidad_respuestas: 0,
-        densidad_promedio_caracteres: 0,
-        palabras_promedio: 0,
-        consistencia_porcentaje: 0,
-        completitud_porcentaje: 0,
-        multiplicador_dificultad: 1.0
+      scoreTotal: 0,
+      nivel: { nombre: 'Sin Evaluar', color: '#9ca3af', descripcion: 'No hay datos suficientes' },
+      completado: false,
+      totalPreguntas: 0,
+      detalles: {
+        comunicacion: 0,
+        conocimientoTecnico: 0,
+        competencias: 0,
+        completitud: 0,
+        coherencia: 0
       },
-      desglose_puntos: {
-        cantidad: { puntos: 0, peso: '30%', contribucion: 0 },
-        densidad: { puntos: 0, peso: '40%', contribucion: 0 },
-        consistencia: { puntos: 0, peso: '20%', contribucion: 0 },
-        completitud: { puntos: 0, peso: '10%', contribucion: 0 },
-        base: 0,
-        multiplicador: 1.0
-      }
-    };
-  }
-
-  /**
-   * Genera análisis textual de las métricas
-   */
-  static generarAnalisisMetricas(resultado) {
-    const { puntuacion_final, metricas, nivel_desempeno } = resultado;
-    const analisis = [];
-
-    // Análisis de cantidad
-    if (metricas.cantidad_respuestas >= 8) {
-      analisis.push('Excelente participación con múltiples respuestas detalladas');
-    } else if (metricas.cantidad_respuestas >= 5) {
-      analisis.push('Buena participación, considera ampliar aún más tus respuestas');
-    } else if (metricas.cantidad_respuestas >= 3) {
-      analisis.push('Participación moderada, intenta responder más preguntas para una evaluación completa');
-    } else {
-      analisis.push('Participación limitada, se recomienda responder más preguntas en futuras entrevistas');
-    }
-
-    // Análisis de densidad
-    if (metricas.palabras_promedio >= 50) {
-      analisis.push('Respuestas muy detalladas y elaboradas');
-    } else if (metricas.palabras_promedio >= 30) {
-      analisis.push('Respuestas con buen nivel de detalle');
-    } else if (metricas.palabras_promedio >= 15) {
-      analisis.push('Respuestas moderadas, considera agregar más ejemplos y detalles');
-    } else {
-      analisis.push('Respuestas breves, intenta desarrollar más tus ideas con ejemplos concretos');
-    }
-
-    // Análisis de consistencia
-    if (metricas.consistencia_porcentaje >= 70) {
-      analisis.push('Excelente consistencia en la calidad de tus respuestas');
-    } else if (metricas.consistencia_porcentaje >= 50) {
-      analisis.push('Consistencia aceptable, algunas respuestas varían en detalle');
-    } else {
-      analisis.push('Se observa variación significativa en el nivel de detalle entre respuestas');
-    }
-
-    return {
-      resumen: `Tu desempeño fue ${nivel_desempeno} con una puntuación de ${puntuacion_final}/100`,
-      puntos_fuertes: analisis.filter((_, i) => i % 2 === 0),
-      areas_mejora: analisis.filter((_, i) => i % 2 !== 0)
+      recomendaciones: []
     };
   }
 }

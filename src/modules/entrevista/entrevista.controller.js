@@ -374,57 +374,43 @@ class EntrevistaController {
 
       let evaluacion;
 
-      // Calcular puntuación con sistema de métricas reales
-      const resultadoScoring = ScoringService.calcularPuntuacion(
-        mensajesUsuario,
-        mensajesAsistente,
-        entrevista.dificultad
-      );
-
-      // Generar análisis de métricas
-      const analisisMetricas = ScoringService.generarAnalisisMetricas(resultadoScoring);
+      // Calcular scoring completo con el nuevo algoritmo
+      const resultadoScoring = ScoringService.calcularScoring(historialCompleto);
 
       // Si la IA no está disponible o falló, usar evaluación basada en scoring
       if (!evaluacionIA.success) {
         logger.warn('IA no disponible, usando evaluación basada en scoring', {
           entrevista_id: entrevistaId,
-          puntuacion_scoring: resultadoScoring.puntuacion_final,
+          puntuacion_scoring: resultadoScoring.scoreTotal,
           error: evaluacionIA.error
         });
 
         // Construir evaluación basada en el sistema de scoring
+        const fortalezas = [
+          `Comunicación: ${resultadoScoring.detalles.comunicacion}/100`,
+          `Conocimiento Técnico: ${resultadoScoring.detalles.conocimientoTecnico}/100`,
+          `Competencias: ${resultadoScoring.detalles.competencias}/100`
+        ];
+
+        const areas_mejora = resultadoScoring.recomendaciones.map(r => r.mensaje);
+
         evaluacion = {
-          puntuacion_global: resultadoScoring.puntuacion_final,
-          nivel_desempenio: resultadoScoring.nivel_desempeno,
-          fortalezas: [
-            `Completaste la entrevista con ${mensajesUsuario.length} respuesta${mensajesUsuario.length !== 1 ? 's' : ''}`,
-            ...(resultadoScoring.metricas.palabras_promedio >= 30 ? ['Respuestas bien elaboradas y detalladas'] : []),
-            ...(resultadoScoring.metricas.consistencia_porcentaje >= 70 ? ['Consistencia notable en la calidad de tus respuestas'] : []),
-            ...(resultadoScoring.metricas.completitud_porcentaje === 100 ? ['Respondiste todas las preguntas realizadas'] : [])
-          ],
-          areas_mejora: [
-            ...(resultadoScoring.metricas.palabras_promedio < 30 ? ['Amplía tus respuestas con más detalles y ejemplos específicos'] : []),
-            ...(resultadoScoring.metricas.cantidad_respuestas < 5 ? ['Participa más activamente en futuras entrevistas'] : []),
-            ...(resultadoScoring.metricas.consistencia_porcentaje < 70 ? ['Mantén un nivel de detalle más uniforme en todas tus respuestas'] : []),
-            'Practica con entrevistas más largas para demostrar todo tu potencial'
-          ],
-          evaluacion_detallada: {
-            participacion: resultadoScoring.desglose_puntos.cantidad.puntos,
-            calidad_respuestas: resultadoScoring.desglose_puntos.densidad.puntos,
-            consistencia: resultadoScoring.desglose_puntos.consistencia.puntos,
-            completitud: resultadoScoring.desglose_puntos.completitud.puntos
-          },
-          recomendacion_contratacion: resultadoScoring.puntuacion_final >= 80
+          puntuacion_global: resultadoScoring.scoreTotal,
+          nivel_desempenio: resultadoScoring.nivel.nombre,
+          fortalezas,
+          areas_mejora,
+          evaluacion_detallada: resultadoScoring.detalles,
+          recomendacion_contratacion: resultadoScoring.scoreTotal >= 80
             ? "Recomendado"
-            : resultadoScoring.puntuacion_final >= 60
+            : resultadoScoring.scoreTotal >= 60
               ? "Recomendado con reservas"
               : "Requiere evaluación adicional",
-          comentario_final: analisisMetricas.resumen,
+          comentario_final: `Desempeño ${resultadoScoring.nivel.nombre} con ${mensajesUsuario.length} preguntas respondidas`,
           proximos_pasos_sugeridos: [
-            ...(resultadoScoring.puntuacion_final >= 80 ? ['Considerar para segunda entrevista'] : []),
+            ...(resultadoScoring.scoreTotal >= 80 ? ['Considerar para segunda entrevista'] : []),
             'Practicar respuestas con método STAR (Situación, Tarea, Acción, Resultado)',
             'Preparar ejemplos concretos de proyectos y logros',
-            ...(resultadoScoring.metricas.palabras_promedio < 30 ? ['Desarrollar habilidades de comunicación verbal'] : [])
+            'Desarrollar las áreas identificadas como oportunidades de mejora'
           ],
           metricas_puntuacion: resultadoScoring
         };
@@ -432,7 +418,13 @@ class EntrevistaController {
         // Si la IA está disponible, usar su evaluación pero agregar métricas de scoring
         evaluacion = {
           ...evaluacionIA.evaluacion,
-          metricas_puntuacion: resultadoScoring
+          metricas_puntuacion: resultadoScoring,
+          // Sobrescribir con datos del scoring si es más completo
+          puntuacion_global: resultadoScoring.scoreTotal,
+          evaluacion_detallada: {
+            ...evaluacionIA.evaluacion.evaluacion_detallada,
+            scoring_detallado: resultadoScoring.detalles
+          }
         };
       }
 
