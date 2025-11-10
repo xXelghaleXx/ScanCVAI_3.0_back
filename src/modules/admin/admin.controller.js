@@ -484,6 +484,49 @@ class AdminController {
         raw: true
       });
 
+      // Métricas adicionales
+      const [
+        usuariosSuspendidos,
+        usuariosInactivos,
+        entrevistasHoy,
+        cvsHoy,
+        tasaConversionCV
+      ] = await Promise.all([
+        Alumno.count({ where: { estado: 'suspendido' } }),
+        Alumno.count({ where: { estado: 'inactivo' } }),
+        Entrevista.count({
+          where: {
+            fecha: {
+              [Op.gte]: new Date(new Date().setHours(0, 0, 0, 0))
+            }
+          }
+        }),
+        CV.count({
+          where: {
+            fecha_creacion: {
+              [Op.gte]: new Date(new Date().setHours(0, 0, 0, 0))
+            }
+          }
+        }),
+        // Tasa de conversión: usuarios que tienen al menos 1 CV / total usuarios
+        (async () => {
+          const usuariosConCV = await CV.findAll({
+            attributes: [[sequelize.fn('DISTINCT', sequelize.col('alumnoId')), 'alumnoId']],
+            raw: true
+          });
+          const totalConCV = usuariosConCV.length;
+          return totalUsuarios > 0 ? ((totalConCV / totalUsuarios) * 100).toFixed(2) : 0;
+        })()
+      ]);
+
+      // Promedio de CVs por usuario activo
+      const promedioCVsPorUsuario = usuariosActivos > 0 ?
+        (totalCVs / usuariosActivos).toFixed(2) : 0;
+
+      // Promedio de entrevistas por usuario activo
+      const promedioEntrevistasPorUsuario = usuariosActivos > 0 ?
+        (totalEntrevistas / usuariosActivos).toFixed(2) : 0;
+
       logger.info("Dashboard general obtenido por admin", {
         admin_id: req.user.id
       });
@@ -494,11 +537,27 @@ class AdminController {
           resumen: {
             total_usuarios: totalUsuarios,
             usuarios_activos: usuariosActivos,
+            usuarios_suspendidos: usuariosSuspendidos,
+            usuarios_inactivos: usuariosInactivos,
             total_cvs: totalCVs,
             total_entrevistas: totalEntrevistas,
             total_informes: totalInformes,
             promedio_entrevistas_global: promedioGeneralEntrevistas?.promedio ?
-              parseFloat(promedioGeneralEntrevistas.promedio).toFixed(2) : null
+              parseFloat(promedioGeneralEntrevistas.promedio).toFixed(2) : null,
+            // Métricas adicionales
+            actividad_hoy: {
+              cvs: cvsHoy,
+              entrevistas: entrevistasHoy
+            },
+            promedios: {
+              cvs_por_usuario: promedioCVsPorUsuario,
+              entrevistas_por_usuario: promedioEntrevistasPorUsuario
+            },
+            tasas: {
+              conversion_cv: tasaConversionCV,
+              actividad: usuariosActivos > 0 ?
+                ((usuariosActivos / totalUsuarios) * 100).toFixed(2) : 0
+            }
           },
           distribucion: {
             por_roles: distribucionRoles,
@@ -654,6 +713,112 @@ class AdminController {
       });
       res.status(500).json({
         error: "Error actualizando estado del usuario",
+        details: error.message
+      });
+    }
+  }
+
+  // 🗑️ Eliminar usuario y todos sus datos relacionados
+  static async eliminarUsuario(req, res) {
+    try {
+      const { userId } = req.params;
+
+      const usuario = await Alumno.findByPk(userId);
+
+      if (!usuario) {
+        return res.status(404).json({
+          error: "Usuario no encontrado"
+        });
+      }
+
+      // Evitar que el admin se elimine a sí mismo
+      if (usuario.id === req.user.id) {
+        return res.status(400).json({
+          error: "No puede eliminarse a sí mismo",
+          message: "No puede eliminar su propia cuenta de administrador"
+        });
+      }
+
+      // Guardar información para el log antes de eliminar
+      const usuarioInfo = {
+        id: usuario.id,
+        nombre: usuario.nombre,
+        correo: usuario.correo,
+        rol: usuario.rol
+      };
+
+      // Obtener todos los CVs del usuario para eliminar datos relacionados
+      const cvs = await CV.findAll({
+        where: { alumnoId: userId },
+        attributes: ['id']
+      });
+
+      const cvIds = cvs.map(cv => cv.id);
+
+      // Usar transacción para asegurar integridad de datos
+      await sequelize.transaction(async (t) => {
+        // Eliminar informes relacionados con los CVs del usuario
+        if (cvIds.length > 0) {
+          await Informe.destroy({
+            where: { cvId: { [Op.in]: cvIds } },
+            transaction: t
+          });
+        }
+
+        // Eliminar respuestas de entrevistas del usuario
+        await RespuestaEntrevista.destroy({
+          where: {
+            entrevistaId: {
+              [Op.in]: sequelize.literal(`(
+                SELECT id FROM entrevistas WHERE "alumnoId" = ${userId}
+              )`)
+            }
+          },
+          transaction: t
+        });
+
+        // Eliminar historial de entrevistas del usuario
+        await HistorialEntrevista.destroy({
+          where: { alumnoId: userId },
+          transaction: t
+        });
+
+        // Eliminar entrevistas del usuario
+        await Entrevista.destroy({
+          where: { alumnoId: userId },
+          transaction: t
+        });
+
+        // Eliminar CVs del usuario
+        await CV.destroy({
+          where: { alumnoId: userId },
+          transaction: t
+        });
+
+        // Finalmente, eliminar el usuario
+        await usuario.destroy({ transaction: t });
+      });
+
+      logger.info("Usuario eliminado por admin", {
+        admin_id: req.user.id,
+        usuario_eliminado: usuarioInfo
+      });
+
+      res.json({
+        success: true,
+        message: "Usuario eliminado correctamente",
+        data: {
+          usuario_eliminado: usuarioInfo
+        }
+      });
+
+    } catch (error) {
+      logger.error("Error eliminando usuario", error, {
+        admin_id: req.user?.id,
+        user_id: req.params.userId
+      });
+      res.status(500).json({
+        error: "Error eliminando usuario",
         details: error.message
       });
     }

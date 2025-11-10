@@ -46,4 +46,11 @@ router.put("/usuarios/:userId/rol", AdminController.actualizarRolUsuario);
  */
 router.put("/usuarios/:userId/estado", AdminController.actualizarEstadoUsuario);
 
+/**
+ * @route   DELETE /api/admin/usuarios/:userId
+ * @desc    Eliminar usuario y todos sus datos relacionados
+ * @access  Admin
+ */
+router.delete("/usuarios/:userId", AdminController.eliminarUsuario);
+
 module.exports = router;
