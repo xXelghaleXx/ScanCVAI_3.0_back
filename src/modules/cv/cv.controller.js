@@ -15,6 +15,7 @@ const fileExtractorService = require("../../shared/services/file-extractor.servi
 const utilsService = require("../../shared/services/utils.service");
 const logger = require("../../shared/services/logger.service");
 const cvScoringService = require("../../shared/services/cv-scoring.service");
+const RubricaEvaluationService = require("../../shared/services/rubrica-evaluation.service");
 
 class CVController {
   
@@ -156,7 +157,14 @@ class CVController {
       // 6. Generar el informe automáticamente
       const informe = await CVController._generarInformeDesdeAnalisis(cv, analisisIA.analisis);
 
-      // 7. Calcular scoring del CV
+      // 7. Calcular scoring del CV usando la rúbrica oficial
+      const rubricaEvaluation = RubricaEvaluationService.evaluarCV(
+        validation,
+        analisisIA.analisis,
+        extractionResult.stats
+      );
+
+      // Mantener compatibilidad con el sistema anterior
       const scoringResult = cvScoringService.calcularPuntuacionCV(
         validation,
         analisisIA.analisis,
@@ -164,6 +172,16 @@ class CVController {
       );
 
       const metricsAnalysis = cvScoringService.generarAnalisisMetricas(scoringResult);
+
+      // Enriquecer el scoring con la evaluación de la rúbrica
+      scoringResult.rubrica = {
+        puntuacion_total: rubricaEvaluation.puntuacion_total,
+        nivel_desempenio: rubricaEvaluation.nivel_desempenio,
+        criterios: rubricaEvaluation.criterios,
+        fortalezas_rubrica: rubricaEvaluation.fortalezas,
+        areas_mejora_rubrica: rubricaEvaluation.areas_mejora,
+        comentario_final_rubrica: rubricaEvaluation.comentario_final
+      };
 
       const processingTime = Date.now() - startTime;
       logger.cvProcessed(alumnoId, cvId, processingTime);

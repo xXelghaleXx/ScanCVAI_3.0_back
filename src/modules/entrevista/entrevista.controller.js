@@ -6,6 +6,7 @@ const {
 } = require("../../database/models");
 const interviewAIService = require("../../shared/services/interview-ai.service");
 const ScoringService = require("../../shared/services/scoring.service");
+const RubricaEvaluationService = require("../../shared/services/rubrica-evaluation.service");
 const logger = require("../../shared/services/logger.service");
 
 class EntrevistaController {
@@ -377,6 +378,21 @@ class EntrevistaController {
       // Calcular scoring completo con el nuevo algoritmo
       const resultadoScoring = ScoringService.calcularScoring(historialCompleto);
 
+      // 🆕 Calcular evaluación con la rúbrica oficial
+      const rubricaEvaluation = RubricaEvaluationService.evaluarEntrevista(
+        historial,
+        {
+          carrera: entrevista.carrera,
+          dificultad: entrevista.dificultad
+        }
+      );
+
+      logger.info('Evaluación de rúbrica calculada', {
+        entrevista_id: entrevistaId,
+        puntuacion_rubrica: rubricaEvaluation.puntuacion_total,
+        nivel_rubrica: rubricaEvaluation.nivel_desempenio.nombre
+      });
+
       // Si la IA no está disponible o falló, usar evaluación basada en scoring
       if (!evaluacionIA.success) {
         logger.warn('IA no disponible, usando evaluación basada en scoring', {
@@ -412,10 +428,20 @@ class EntrevistaController {
             'Preparar ejemplos concretos de proyectos y logros',
             'Desarrollar las áreas identificadas como oportunidades de mejora'
           ],
-          metricas_puntuacion: resultadoScoring
+          metricas_puntuacion: resultadoScoring,
+          // Agregar evaluación de rúbrica
+          rubrica: {
+            puntuacion_total: rubricaEvaluation.puntuacion_total,
+            nivel_desempenio: rubricaEvaluation.nivel_desempenio,
+            criterios: rubricaEvaluation.criterios,
+            fortalezas_rubrica: rubricaEvaluation.fortalezas,
+            areas_mejora_rubrica: rubricaEvaluation.areas_mejora,
+            comentario_final_rubrica: rubricaEvaluation.comentario_final,
+            total_preguntas: rubricaEvaluation.total_preguntas
+          }
         };
       } else {
-        // Si la IA está disponible, usar su evaluación pero agregar métricas de scoring
+        // Si la IA está disponible, usar su evaluación pero agregar métricas de scoring y rúbrica
         evaluacion = {
           ...evaluacionIA.evaluacion,
           metricas_puntuacion: resultadoScoring,
@@ -424,6 +450,16 @@ class EntrevistaController {
           evaluacion_detallada: {
             ...evaluacionIA.evaluacion.evaluacion_detallada,
             scoring_detallado: resultadoScoring.detalles
+          },
+          // Agregar evaluación de rúbrica
+          rubrica: {
+            puntuacion_total: rubricaEvaluation.puntuacion_total,
+            nivel_desempenio: rubricaEvaluation.nivel_desempenio,
+            criterios: rubricaEvaluation.criterios,
+            fortalezas_rubrica: rubricaEvaluation.fortalezas,
+            areas_mejora_rubrica: rubricaEvaluation.areas_mejora,
+            comentario_final_rubrica: rubricaEvaluation.comentario_final,
+            total_preguntas: rubricaEvaluation.total_preguntas
           }
         };
       }
