@@ -208,7 +208,7 @@ class InformeController {
         return res.status(404).json({ error: "Informe no encontrado" });
       }
 
-      // Preparar datos para el PDF
+      // Preparar datos para el PDF (incluyendo análisis completo guardado en CV)
       const contenidoPDF = {
         titulo: `Informe de Análisis de CV`,
         fecha: informe.fecha_generacion,
@@ -221,7 +221,13 @@ class InformeController {
         habilidades_blandas: informe.habilidades
           .filter(h => h.habilidad.tipo.nombre === 'Blanda')
           .map(h => h.habilidad.habilidad),
-        areas_mejora: informe.areas_mejora.map(a => a.area_mejora)
+        areas_mejora: informe.areas_mejora.map(a => a.area_mejora),
+        // Agregar datos del análisis completo guardados en el CV
+        analisis_completo: informe.cv.analisis_ia,
+        scoring: informe.cv.scoring_data,
+        rubrica: informe.cv.rubrica_evaluation,
+        validation: informe.cv.validation_data,
+        stats: informe.cv.stats_data
       };
 
       // Generar PDF

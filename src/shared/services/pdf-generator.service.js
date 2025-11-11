@@ -198,7 +198,12 @@ class PDFGenerator {
       fortalezas,
       habilidades_tecnicas,
       habilidades_blandas,
-      areas_mejora
+      areas_mejora,
+      rubrica,
+      scoring,
+      validation,
+      stats,
+      analisis_completo
     } = data;
 
     const detailedImprovements = this.generateDetailedImprovements(areas_mejora);
@@ -444,6 +449,77 @@ class PDFGenerator {
       color: #d68910;
     }
 
+    .score-card {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 20px;
+      border-radius: 8px;
+      margin: 15px 0;
+      text-align: center;
+    }
+
+    .score-value {
+      font-size: 48pt;
+      font-weight: 700;
+      margin: 10px 0;
+    }
+
+    .score-label {
+      font-size: 11pt;
+      opacity: 0.9;
+    }
+
+    .rubric-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+      font-size: 10pt;
+    }
+
+    .rubric-table th, .rubric-table td {
+      border: 1px solid #bdc3c7;
+      padding: 10px;
+      text-align: left;
+    }
+
+    .rubric-table th {
+      background: #ecf0f1;
+      font-weight: 600;
+      color: #2c3e50;
+    }
+
+    .rubric-table tr:nth-child(even) {
+      background: #f8f9fa;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 15px;
+      margin-top: 10px;
+    }
+
+    .stat-box {
+      background: #f8f9fa;
+      padding: 15px;
+      border-radius: 4px;
+      text-align: center;
+      border-left: 3px solid #3498db;
+    }
+
+    .stat-number {
+      font-size: 24pt;
+      font-weight: 700;
+      color: #2c3e50;
+      display: block;
+      margin-bottom: 5px;
+    }
+
+    .stat-label {
+      font-size: 9pt;
+      color: #7f8c8d;
+    }
+
     .footer {
       margin-top: 40px;
       padding-top: 20px;
@@ -507,6 +583,103 @@ class PDFGenerator {
       </div>
       ` : ''}
     </div>
+  </div>
+  ` : ''}
+
+  <!-- Evaluación de Rúbrica Oficial TECSUP -->
+  ${rubrica ? `
+  <div class="section" style="page-break-before: always;">
+    <h2 class="section-title">Evaluación Basada en Rúbrica Oficial TECSUP</h2>
+
+    <div class="score-card">
+      <div class="score-label">Puntuación Total</div>
+      <div class="score-value">${rubrica.puntuacion_total}/100</div>
+      <div class="score-label" style="font-size: 14pt; font-weight: 600; margin-top: 10px;">
+        ${rubrica.nivel_desempenio?.nombre || 'N/A'}
+      </div>
+      <div class="score-label" style="font-size: 10pt; margin-top: 5px;">
+        ${rubrica.nivel_desempenio?.descripcion || ''}
+      </div>
+    </div>
+
+    <h3 class="subsection-title" style="margin-top: 20px;">Evaluación por Criterios</h3>
+    <table class="rubric-table">
+      <thead>
+        <tr>
+          <th>Criterio</th>
+          <th>Peso</th>
+          <th>Puntos Obtenidos</th>
+          <th>Nivel</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${Object.entries(rubrica.criterios || {}).map(([key, criterio]) => `
+        <tr>
+          <td><strong>${criterio.nombre}</strong></td>
+          <td>${criterio.peso} pts</td>
+          <td>${criterio.puntos.toFixed(1)} pts</td>
+          <td>${criterio.nivel}</td>
+        </tr>
+        `).join('')}
+      </tbody>
+    </table>
+
+    ${rubrica.fortalezas && rubrica.fortalezas.length > 0 ? `
+    <div class="subsection" style="margin-top: 20px;">
+      <h4 class="subsection-title">Fortalezas Identificadas (Rúbrica)</h4>
+      <div class="list">
+        ${rubrica.fortalezas.map(f => `<div class="list-item">${f}</div>`).join('')}
+      </div>
+    </div>
+    ` : ''}
+
+    ${rubrica.areas_mejora && rubrica.areas_mejora.length > 0 ? `
+    <div class="subsection" style="margin-top: 15px;">
+      <h4 class="subsection-title">Áreas de Mejora (Rúbrica)</h4>
+      <div class="list">
+        ${rubrica.areas_mejora.map(a => `<div class="list-item">${a}</div>`).join('')}
+      </div>
+    </div>
+    ` : ''}
+
+    ${rubrica.comentario_final ? `
+    <div class="highlight-box" style="margin-top: 15px;">
+      <strong>Comentario Final:</strong> ${rubrica.comentario_final}
+    </div>
+    ` : ''}
+  </div>
+  ` : ''}
+
+  <!-- Estadísticas del CV -->
+  ${stats ? `
+  <div class="section">
+    <h2 class="section-title">Estadísticas del Documento</h2>
+
+    <div class="stats-grid">
+      <div class="stat-box">
+        <span class="stat-number">${stats.total_palabras || 0}</span>
+        <span class="stat-label">Palabras Totales</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-number">${stats.total_lineas || 0}</span>
+        <span class="stat-label">Líneas</span>
+      </div>
+      <div class="stat-box">
+        <span class="stat-number">${Object.keys(stats.secciones_detectadas || {}).length}</span>
+        <span class="stat-label">Secciones Detectadas</span>
+      </div>
+    </div>
+
+    ${stats.secciones_detectadas && Object.keys(stats.secciones_detectadas).length > 0 ? `
+    <div class="subsection" style="margin-top: 15px;">
+      <h4 class="subsection-title">Secciones Identificadas</h4>
+      <div class="content-text">
+        ${Object.entries(stats.secciones_detectadas).map(([seccion, detectada]) =>
+          detectada ? `<span style="color: #27ae60;">✓ ${seccion}</span>` : `<span style="color: #e74c3c;">✗ ${seccion}</span>`
+        ).join(' | ')}
+      </div>
+    </div>
+    ` : ''}
   </div>
   ` : ''}
 

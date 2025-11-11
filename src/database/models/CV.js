@@ -23,6 +23,31 @@ const CV = sequelize.define("CV", {
     allowNull: true,
     comment: "Texto extraído con IA"
   },
+  analisis_ia: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: "Análisis completo generado por la IA (fortalezas, habilidades, educación, experiencia, etc.)"
+  },
+  scoring_data: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: "Datos completos del scoring (puntuación final, métricas, nivel CV, etc.)"
+  },
+  rubrica_evaluation: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: "Evaluación completa basada en la rúbrica oficial (criterios, puntuación, nivel desempeño)"
+  },
+  validation_data: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: "Datos de validación del CV (score, campos requeridos, warnings)"
+  },
+  stats_data: {
+    type: DataTypes.JSON,
+    allowNull: true,
+    comment: "Estadísticas del CV (palabras, líneas, secciones detectadas)"
+  },
   fecha_creacion: {
     type: DataTypes.DATE,
     allowNull: false,

@@ -146,18 +146,7 @@ class CVController {
         Date.now() - startTime
       );
 
-      // 4. Guardar resultado en BD
-      await cv.update({ 
-        contenido_extraido: textoExtraido 
-      });
-
-      // 5. Crear/actualizar habilidades detectadas
-      await CVController.procesarHabilidadesDetectadas(cv, analisisIA.analisis);
-
-      // 6. Generar el informe automáticamente
-      const informe = await CVController._generarInformeDesdeAnalisis(cv, analisisIA.analisis);
-
-      // 7. Calcular scoring del CV usando la rúbrica oficial
+      // 4. Calcular scoring del CV usando la rúbrica oficial
       const rubricaEvaluation = RubricaEvaluationService.evaluarCV(
         validation,
         analisisIA.analisis,
@@ -182,6 +171,25 @@ class CVController {
         areas_mejora_rubrica: rubricaEvaluation.areas_mejora,
         comentario_final_rubrica: rubricaEvaluation.comentario_final
       };
+
+      // 5. Guardar todos los datos del análisis en BD
+      await cv.update({
+        contenido_extraido: textoExtraido,
+        analisis_ia: analisisIA.analisis,
+        scoring_data: {
+          ...scoringResult,
+          analisis_metricas: metricsAnalysis
+        },
+        rubrica_evaluation: rubricaEvaluation,
+        validation_data: validation,
+        stats_data: extractionResult.stats
+      });
+
+      // 6. Crear/actualizar habilidades detectadas
+      await CVController.procesarHabilidadesDetectadas(cv, analisisIA.analisis);
+
+      // 7. Generar el informe automáticamente
+      const informe = await CVController._generarInformeDesdeAnalisis(cv, analisisIA.analisis);
 
       const processingTime = Date.now() - startTime;
       logger.cvProcessed(alumnoId, cvId, processingTime);
