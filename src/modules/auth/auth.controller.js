@@ -1,10 +1,12 @@
 const { OAuth2Client } = require("google-auth-library");
 const jwt = require("jsonwebtoken");
+const crypto = require("crypto");
 const { Alumno } = require("../../database/models");
 const { Token } = require("../../database/models");
 const { Op } = require('sequelize');
 const utilsService = require("../../shared/services/utils.service");
 const logger = require("../../shared/services/logger.service");
+const emailService = require("../../shared/services/email.service");
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
 // Función para crear access y refresh tokens
@@ -654,5 +656,222 @@ exports.changePassword = async (req, res) => {
   } catch (error) {
     console.error('Error cambiando contraseña:', error);
     res.status(500).json({ error: 'Error cambiando contraseña' });
+  }
+};
+
+/**
+ * Solicitar recuperación de contraseña
+ * Genera un token y envía email con enlace de recuperación
+ */
+exports.forgotPassword = async (req, res) => {
+  try {
+    const { correo } = req.body;
+
+    if (!correo) {
+      return res.status(400).json({
+        error: 'Se requiere el correo electrónico',
+        code: 'MISSING_EMAIL'
+      });
+    }
+
+    const alumno = await Alumno.findOne({ where: { correo } });
+
+    // Por seguridad, siempre devolver success incluso si el correo no existe
+    // para evitar que se pueda enumerar usuarios
+    if (!alumno) {
+      logger.warn('Intento de recuperación de contraseña con correo no registrado', {
+        correo,
+        ip: req.ip
+      });
+      return res.json({
+        success: true,
+        message: 'Si el correo existe, recibirás un enlace de recuperación'
+      });
+    }
+
+    // Generar token único
+    const resetToken = crypto.randomBytes(32).toString('hex');
+    const hashedToken = crypto.createHash('sha256').update(resetToken).digest('hex');
+
+    // Token expira en 1 hora
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+    // Guardar token hasheado en la base de datos
+    alumno.reset_password_token = hashedToken;
+    alumno.reset_password_expires = expiresAt;
+    await alumno.save();
+
+    // Enviar email con el token original (no hasheado)
+    try {
+      await emailService.enviarEmailRecuperacion(correo, resetToken);
+
+      logger.info('Email de recuperación enviado', {
+        alumno_id: alumno.id,
+        correo,
+        expires_at: expiresAt
+      });
+
+      res.json({
+        success: true,
+        message: 'Si el correo existe, recibirás un enlace de recuperación',
+        expires_in: '1 hora'
+      });
+
+    } catch (emailError) {
+      // Si falla el envío de email, limpiar el token
+      alumno.reset_password_token = null;
+      alumno.reset_password_expires = null;
+      await alumno.save();
+
+      logger.error('Error enviando email de recuperación', emailError, {
+        alumno_id: alumno.id,
+        correo
+      });
+
+      return res.status(500).json({
+        error: 'Error al enviar el correo de recuperación. Intenta nuevamente.',
+        code: 'EMAIL_SEND_ERROR'
+      });
+    }
+
+  } catch (error) {
+    logger.error('Error en forgot password', error, {
+      correo: req.body?.correo,
+      ip: req.ip
+    });
+    res.status(500).json({
+      error: 'Error procesando la solicitud',
+      code: 'SERVER_ERROR'
+    });
+  }
+};
+
+/**
+ * Restablecer contraseña con token
+ */
+exports.resetPassword = async (req, res) => {
+  try {
+    const { token, nueva_contrasena } = req.body;
+
+    if (!token || !nueva_contrasena) {
+      return res.status(400).json({
+        error: 'Se requiere token y nueva contraseña',
+        code: 'MISSING_FIELDS'
+      });
+    }
+
+    if (nueva_contrasena.length < 6) {
+      return res.status(400).json({
+        error: 'La contraseña debe tener al menos 6 caracteres',
+        code: 'PASSWORD_TOO_SHORT'
+      });
+    }
+
+    // Hashear el token recibido para compararlo con la BD
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    // Buscar alumno con token válido y no expirado
+    const alumno = await Alumno.findOne({
+      where: {
+        reset_password_token: hashedToken,
+        reset_password_expires: {
+          [Op.gt]: new Date()
+        }
+      }
+    });
+
+    if (!alumno) {
+      logger.warn('Intento de reset con token inválido o expirado', {
+        ip: req.ip
+      });
+      return res.status(400).json({
+        error: 'Token inválido o expirado. Solicita un nuevo enlace de recuperación.',
+        code: 'INVALID_TOKEN'
+      });
+    }
+
+    // Actualizar contraseña
+    alumno.contrasena = nueva_contrasena;
+    alumno.reset_password_token = null;
+    alumno.reset_password_expires = null;
+    alumno.intentos_fallidos = 0; // Resetear intentos fallidos
+    await alumno.save();
+
+    logger.info('Contraseña restablecida exitosamente', {
+      alumno_id: alumno.id,
+      correo: alumno.correo
+    });
+
+    // Enviar email de confirmación
+    try {
+      await emailService.enviarConfirmacionCambioPassword(alumno.correo, alumno.nombre);
+    } catch (emailError) {
+      // No fallar si el email de confirmación falla
+      logger.error('Error enviando confirmación de cambio de contraseña', emailError);
+    }
+
+    res.json({
+      success: true,
+      message: 'Contraseña actualizada correctamente. Ya puedes iniciar sesión con tu nueva contraseña.'
+    });
+
+  } catch (error) {
+    logger.error('Error en reset password', error, {
+      ip: req.ip
+    });
+    res.status(500).json({
+      error: 'Error al restablecer la contraseña',
+      code: 'SERVER_ERROR'
+    });
+  }
+};
+
+/**
+ * Verificar validez de token de recuperación
+ */
+exports.verifyResetToken = async (req, res) => {
+  try {
+    const { token } = req.query;
+
+    if (!token) {
+      return res.status(400).json({
+        error: 'Se requiere el token',
+        code: 'MISSING_TOKEN'
+      });
+    }
+
+    const hashedToken = crypto.createHash('sha256').update(token).digest('hex');
+
+    const alumno = await Alumno.findOne({
+      where: {
+        reset_password_token: hashedToken,
+        reset_password_expires: {
+          [Op.gt]: new Date()
+        }
+      },
+      attributes: ['id', 'correo', 'nombre', 'reset_password_expires']
+    });
+
+    if (!alumno) {
+      return res.status(400).json({
+        valid: false,
+        error: 'Token inválido o expirado',
+        code: 'INVALID_TOKEN'
+      });
+    }
+
+    res.json({
+      valid: true,
+      correo: alumno.correo,
+      nombre: alumno.nombre,
+      expires_at: alumno.reset_password_expires
+    });
+
+  } catch (error) {
+    logger.error('Error verificando token', error);
+    res.status(500).json({
+      error: 'Error verificando el token',
+      code: 'SERVER_ERROR'
+    });
   }
 };

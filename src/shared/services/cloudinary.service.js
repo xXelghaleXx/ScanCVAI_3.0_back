@@ -178,6 +178,52 @@ const isConfigured = () => {
 };
 
 /**
+ * Subir buffer directamente a Cloudinary
+ * @param {Buffer} buffer - Buffer del archivo
+ * @param {object} options - Opciones de subida
+ * @returns {Promise<object>} - Resultado de la subida
+ */
+const uploadBuffer = async (buffer, options = {}) => {
+  try {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder: options.folder || 'scancvai/informes',
+          resource_type: options.resource_type || 'raw',
+          public_id: options.public_id,
+          tags: options.tags || ['informe'],
+          format: options.format || 'pdf',
+          ...options
+        },
+        (error, result) => {
+          if (error) {
+            console.error('❌ Error subiendo buffer a Cloudinary:', error);
+            reject(error);
+          } else {
+            resolve({
+              success: true,
+              url: result.secure_url,
+              publicId: result.public_id,
+              format: result.format,
+              size: result.bytes,
+              createdAt: result.created_at
+            });
+          }
+        }
+      );
+
+      uploadStream.end(buffer);
+    });
+  } catch (error) {
+    console.error('❌ Error en uploadBuffer:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+};
+
+/**
  * Descargar archivo de Cloudinary (obtener buffer)
  * @param {string} url - URL del archivo
  * @returns {Promise<Buffer>} - Buffer del archivo
@@ -206,6 +252,7 @@ module.exports = {
   cloudinary,
   cvStorage,
   uploadFile,
+  uploadBuffer,
   deleteFile,
   getSignedUrl,
   getFileInfo,

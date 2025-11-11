@@ -49,6 +49,16 @@ Alumno.init(
       validate: {
         isIn: [['alumno', 'administrador']]
       }
+    },
+    reset_password_token: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      comment: 'Token para recuperación de contraseña'
+    },
+    reset_password_expires: {
+      type: DataTypes.DATE,
+      allowNull: true,
+      comment: 'Fecha de expiración del token de recuperación'
     }
   },
   {

@@ -18,6 +18,11 @@ router.post("/google/callback", authController.googleLogin);
 // 🔄 Refrescar access token (público, solo requiere refresh token)
 router.post("/refresh", authController.refreshToken);
 
+// 🔑 Recuperación de contraseña (rutas públicas)
+router.post("/forgot-password", authController.forgotPassword);
+router.post("/reset-password", authController.resetPassword);
+router.get("/verify-reset-token", authController.verifyResetToken);
+
 // ========== RUTAS PROTEGIDAS (requieren autenticación) ==========
 
 // Aplicar middleware de autenticación a todas las rutas siguientes

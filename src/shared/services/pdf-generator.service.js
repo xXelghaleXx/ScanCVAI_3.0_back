@@ -450,12 +450,13 @@ class PDFGenerator {
     }
 
     .score-card {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: #2b7de9;
       color: white;
       padding: 20px;
       border-radius: 8px;
       margin: 15px 0;
       text-align: center;
+      border: 1px solid #1e5bb8;
     }
 
     .score-value {
@@ -483,9 +484,9 @@ class PDFGenerator {
     }
 
     .rubric-table th {
-      background: #ecf0f1;
+      background: #2b7de9;
       font-weight: 600;
-      color: #2c3e50;
+      color: white;
     }
 
     .rubric-table tr:nth-child(even) {
@@ -504,7 +505,8 @@ class PDFGenerator {
       padding: 15px;
       border-radius: 4px;
       text-align: center;
-      border-left: 3px solid #3498db;
+      border-left: 4px solid #2b7de9;
+      border: 1px solid #e0e0e0;
     }
 
     .stat-number {

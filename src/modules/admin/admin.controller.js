@@ -10,6 +10,7 @@ const { Op } = require('sequelize');
 const sequelize = require("../../config/database.config");
 const logger = require("../../shared/services/logger.service");
 const utilsService = require("../../shared/services/utils.service");
+const excelExportService = require("../../shared/services/excel-export.service");
 
 class AdminController {
 
@@ -819,6 +820,330 @@ class AdminController {
       });
       res.status(500).json({
         error: "Error eliminando usuario",
+        details: error.message
+      });
+    }
+  }
+
+  // 📥 EXPORTACIONES A EXCEL
+
+  /**
+   * Exportar todos los usuarios a Excel
+   */
+  static async exportarUsuarios(req, res) {
+    try {
+      logger.info('Exportando usuarios a Excel', {
+        adminId: req.user.id
+      });
+
+      // Obtener todos los usuarios con sus métricas
+      const usuarios = await Alumno.findAll({
+        attributes: [
+          'id',
+          'nombre',
+          'correo',
+          'rol',
+          'estado',
+          'createdAt',
+          'fecha_ultimo_acceso'
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+
+      // Enriquecer con métricas
+      const usuariosConMetricas = await Promise.all(
+        usuarios.map(async (usuario) => {
+          const [totalCVs, totalEntrevistas, totalInformes] = await Promise.all([
+            CV.count({ where: { alumnoId: usuario.id } }),
+            Entrevista.count({ where: { alumnoId: usuario.id } }),
+            Informe.count({
+              include: [{ model: CV, as: 'cv', where: { alumnoId: usuario.id } }]
+            })
+          ]);
+
+          return {
+            ...usuario.toJSON(),
+            total_cvs: totalCVs,
+            total_entrevistas: totalEntrevistas,
+            total_informes: totalInformes
+          };
+        })
+      );
+
+      // Generar Excel
+      const buffer = excelExportService.exportarUsuarios(usuariosConMetricas);
+      const filename = excelExportService.generarNombreArchivo('usuarios_tecsup');
+
+      // Enviar archivo
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+
+      logger.info('Usuarios exportados exitosamente', {
+        adminId: req.user.id,
+        totalUsuarios: usuariosConMetricas.length
+      });
+
+    } catch (error) {
+      logger.error('Error exportando usuarios', error, {
+        adminId: req.user.id
+      });
+      res.status(500).json({
+        error: 'Error al exportar usuarios',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Exportar todos los CVs a Excel
+   */
+  static async exportarCVs(req, res) {
+    try {
+      logger.info('Exportando CVs a Excel', {
+        adminId: req.user.id
+      });
+
+      const cvs = await CV.findAll({
+        include: [
+          {
+            model: Alumno,
+            as: 'alumno',
+            attributes: ['nombre', 'correo']
+          },
+          {
+            model: Informe,
+            as: 'informes',
+            attributes: ['id']
+          }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+
+      const buffer = excelExportService.exportarCVs(cvs);
+      const filename = excelExportService.generarNombreArchivo('cvs_tecsup');
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+
+      logger.info('CVs exportados exitosamente', {
+        adminId: req.user.id,
+        totalCVs: cvs.length
+      });
+
+    } catch (error) {
+      logger.error('Error exportando CVs', error, {
+        adminId: req.user.id
+      });
+      res.status(500).json({
+        error: 'Error al exportar CVs',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Exportar todas las entrevistas a Excel
+   */
+  static async exportarEntrevistas(req, res) {
+    try {
+      logger.info('Exportando entrevistas a Excel', {
+        adminId: req.user.id
+      });
+
+      const entrevistas = await Entrevista.findAll({
+        include: [
+          {
+            model: Alumno,
+            as: 'alumno',
+            attributes: ['nombre', 'correo']
+          },
+          {
+            model: RespuestaEntrevista,
+            as: 'respuestas',
+            attributes: ['id']
+          }
+        ],
+        order: [['createdAt', 'DESC']]
+      });
+
+      const buffer = excelExportService.exportarEntrevistas(entrevistas);
+      const filename = excelExportService.generarNombreArchivo('entrevistas_tecsup');
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+
+      logger.info('Entrevistas exportadas exitosamente', {
+        adminId: req.user.id,
+        totalEntrevistas: entrevistas.length
+      });
+
+    } catch (error) {
+      logger.error('Error exportando entrevistas', error, {
+        adminId: req.user.id
+      });
+      res.status(500).json({
+        error: 'Error al exportar entrevistas',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Exportar todos los informes a Excel
+   */
+  static async exportarInformes(req, res) {
+    try {
+      logger.info('Exportando informes a Excel', {
+        adminId: req.user.id
+      });
+
+      const informes = await Informe.findAll({
+        include: [
+          {
+            model: CV,
+            as: 'cv',
+            attributes: ['nombre_archivo', 'alumnoId'],
+            include: [
+              {
+                model: Alumno,
+                as: 'alumno',
+                attributes: ['nombre', 'correo']
+              }
+            ]
+          }
+        ],
+        order: [['fecha_generacion', 'DESC']]
+      });
+
+      const buffer = excelExportService.exportarInformes(informes);
+      const filename = excelExportService.generarNombreArchivo('informes_tecsup');
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+
+      logger.info('Informes exportados exitosamente', {
+        adminId: req.user.id,
+        totalInformes: informes.length
+      });
+
+    } catch (error) {
+      logger.error('Error exportando informes', error, {
+        adminId: req.user.id
+      });
+      res.status(500).json({
+        error: 'Error al exportar informes',
+        details: error.message
+      });
+    }
+  }
+
+  /**
+   * Exportar estadísticas generales a Excel
+   */
+  static async exportarEstadisticas(req, res) {
+    try {
+      logger.info('Exportando estadísticas generales a Excel', {
+        adminId: req.user.id
+      });
+
+      // Obtener estadísticas
+      const [
+        totalUsuarios,
+        usuariosActivos,
+        totalCVs,
+        cvsProcessed,
+        totalEntrevistas,
+        entrevistasFinalizadas,
+        totalInformes
+      ] = await Promise.all([
+        Alumno.count(),
+        Alumno.count({ where: { estado: 'activo' } }),
+        CV.count(),
+        CV.count({ where: { contenido_extraido: { [Op.not]: null } } }),
+        Entrevista.count(),
+        Entrevista.count({ where: { estado: 'finalizada' } }),
+        Informe.count()
+      ]);
+
+      // Promedios
+      const cvsConScoring = await CV.findAll({
+        attributes: ['scoring_data'],
+        where: { scoring_data: { [Op.not]: null } }
+      });
+
+      const promedioPuntuacionCVs = cvsConScoring.length > 0
+        ? cvsConScoring.reduce((acc, cv) => acc + (cv.scoring_data?.puntuacion_final || 0), 0) / cvsConScoring.length
+        : 0;
+
+      const entrevistasConPuntuacion = await Entrevista.findAll({
+        attributes: ['puntuacion_final'],
+        where: { puntuacion_final: { [Op.not]: null } }
+      });
+
+      const promedioPuntuacionEntrevistas = entrevistasConPuntuacion.length > 0
+        ? entrevistasConPuntuacion.reduce((acc, e) => acc + (e.puntuacion_final || 0), 0) / entrevistasConPuntuacion.length
+        : 0;
+
+      // Top usuarios
+      const topUsuarios = await Alumno.findAll({
+        attributes: ['id', 'nombre', 'correo'],
+        limit: 10,
+        order: [['createdAt', 'DESC']]
+      });
+
+      const topUsuariosConMetricas = await Promise.all(
+        topUsuarios.map(async (usuario) => {
+          const [total_cvs, total_entrevistas, total_informes] = await Promise.all([
+            CV.count({ where: { alumnoId: usuario.id } }),
+            Entrevista.count({ where: { alumnoId: usuario.id } }),
+            Informe.count({
+              include: [{ model: CV, as: 'cv', where: { alumnoId: usuario.id } }]
+            })
+          ]);
+
+          return {
+            ...usuario.toJSON(),
+            total_cvs,
+            total_entrevistas,
+            total_informes
+          };
+        })
+      );
+
+      const stats = {
+        totalUsuarios,
+        usuariosActivos,
+        totalCVs,
+        cvsProcessed,
+        totalEntrevistas,
+        entrevistasFinalizadas,
+        totalInformes,
+        promedioPuntuacionCVs,
+        promedioPuntuacionEntrevistas,
+        topUsuarios: topUsuariosConMetricas
+      };
+
+      const buffer = excelExportService.exportarEstadisticasGenerales(stats);
+      const filename = excelExportService.generarNombreArchivo('estadisticas_tecsup');
+
+      res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send(buffer);
+
+      logger.info('Estadísticas exportadas exitosamente', {
+        adminId: req.user.id
+      });
+
+    } catch (error) {
+      logger.error('Error exportando estadísticas', error, {
+        adminId: req.user.id
+      });
+      res.status(500).json({
+        error: 'Error al exportar estadísticas',
         details: error.message
       });
     }

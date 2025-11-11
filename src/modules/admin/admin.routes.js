@@ -53,4 +53,43 @@ router.put("/usuarios/:userId/estado", AdminController.actualizarEstadoUsuario);
  */
 router.delete("/usuarios/:userId", AdminController.eliminarUsuario);
 
+/**
+ * EXPORTACIONES A EXCEL
+ */
+
+/**
+ * @route   GET /api/admin/exportar/usuarios
+ * @desc    Exportar todos los usuarios a Excel
+ * @access  Admin
+ */
+router.get("/exportar/usuarios", AdminController.exportarUsuarios);
+
+/**
+ * @route   GET /api/admin/exportar/cvs
+ * @desc    Exportar todos los CVs a Excel
+ * @access  Admin
+ */
+router.get("/exportar/cvs", AdminController.exportarCVs);
+
+/**
+ * @route   GET /api/admin/exportar/entrevistas
+ * @desc    Exportar todas las entrevistas a Excel
+ * @access  Admin
+ */
+router.get("/exportar/entrevistas", AdminController.exportarEntrevistas);
+
+/**
+ * @route   GET /api/admin/exportar/informes
+ * @desc    Exportar todos los informes a Excel
+ * @access  Admin
+ */
+router.get("/exportar/informes", AdminController.exportarInformes);
+
+/**
+ * @route   GET /api/admin/exportar/estadisticas
+ * @desc    Exportar estadísticas generales a Excel
+ * @access  Admin
+ */
+router.get("/exportar/estadisticas", AdminController.exportarEstadisticas);
+
 module.exports = router;

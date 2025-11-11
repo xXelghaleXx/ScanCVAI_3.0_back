@@ -9,6 +9,7 @@ const {
   TipoHabilidad
 } = require("../../database/models");
 const PDFGenerator = require("../../shared/services/pdf-generator.service");
+const cloudinaryService = require("../../shared/services/cloudinary.service");
 
 class InformeController {
 
@@ -70,6 +71,7 @@ class InformeController {
           fecha_generacion: informe.fecha_generacion,
           alumno: informe.cv.alumno.nombre,
           cv_archivo: informe.cv.archivo,
+          pdf_url: informe.pdf_url,
           fortalezas: informe.fortalezas.map(f => f.fortaleza),
           habilidades: informe.habilidades.map(h => ({
             habilidad: h.habilidad.habilidad,
@@ -106,7 +108,8 @@ class InformeController {
         resumen_corto: informe.resumen.substring(0, 100) + '...',
         fecha_generacion: informe.fecha_generacion,
         cv_archivo: informe.cv.archivo,
-        cv_id: informe.cv.id
+        cv_id: informe.cv.id,
+        pdf_url: informe.pdf_url
       }));
 
       res.json({ informes: informesResumen });
@@ -208,30 +211,77 @@ class InformeController {
         return res.status(404).json({ error: "Informe no encontrado" });
       }
 
-      // Preparar datos para el PDF (incluyendo análisis completo guardado en CV)
-      const contenidoPDF = {
-        titulo: `Informe de Análisis de CV`,
-        fecha: informe.fecha_generacion,
-        alumno: informe.cv.alumno.nombre,
-        resumen: informe.resumen,
-        fortalezas: informe.fortalezas.map(f => f.fortaleza),
-        habilidades_tecnicas: informe.habilidades
-          .filter(h => h.habilidad.tipo.nombre === 'Técnica')
-          .map(h => h.habilidad.habilidad),
-        habilidades_blandas: informe.habilidades
-          .filter(h => h.habilidad.tipo.nombre === 'Blanda')
-          .map(h => h.habilidad.habilidad),
-        areas_mejora: informe.areas_mejora.map(a => a.area_mejora),
-        // Agregar datos del análisis completo guardados en el CV
-        analisis_completo: informe.cv.analisis_ia,
-        scoring: informe.cv.scoring_data,
-        rubrica: informe.cv.rubrica_evaluation,
-        validation: informe.cv.validation_data,
-        stats: informe.cv.stats_data
-      };
+      // Si el PDF ya existe en Cloudinary y solo se solicita descarga, usarlo
+      let pdfBuffer;
 
-      // Generar PDF
-      const pdfBuffer = await PDFGenerator.generatePDF(contenidoPDF);
+      if (informe.pdf_url) {
+        // Descargar el PDF existente de Cloudinary
+        try {
+          pdfBuffer = await cloudinaryService.downloadFile(informe.pdf_url);
+        } catch (downloadError) {
+          console.error('Error descargando PDF de Cloudinary, regenerando...', downloadError);
+          // Si falla la descarga, regenerar el PDF
+          pdfBuffer = null;
+        }
+      }
+
+      // Si no existe PDF o hubo error al descargar, generar nuevo PDF
+      if (!pdfBuffer) {
+        // Preparar datos para el PDF (incluyendo análisis completo guardado en CV)
+        const contenidoPDF = {
+          titulo: `Informe de Análisis de CV`,
+          fecha: informe.fecha_generacion,
+          alumno: informe.cv.alumno.nombre,
+          resumen: informe.resumen,
+          fortalezas: informe.fortalezas.map(f => f.fortaleza),
+          habilidades_tecnicas: informe.habilidades
+            .filter(h => h.habilidad.tipo.nombre === 'Técnica')
+            .map(h => h.habilidad.habilidad),
+          habilidades_blandas: informe.habilidades
+            .filter(h => h.habilidad.tipo.nombre === 'Blanda')
+            .map(h => h.habilidad.habilidad),
+          areas_mejora: informe.areas_mejora.map(a => a.area_mejora),
+          // Agregar datos del análisis completo guardados en el CV
+          analisis_completo: informe.cv.analisis_ia,
+          scoring: informe.cv.scoring_data,
+          rubrica: informe.cv.rubrica_evaluation,
+          validation: informe.cv.validation_data,
+          stats: informe.cv.stats_data
+        };
+
+        // Generar PDF
+        pdfBuffer = await PDFGenerator.generatePDF(contenidoPDF);
+
+        // Subir PDF a Cloudinary si no existe
+        if (!informe.pdf_url) {
+          try {
+            const timestamp = Date.now();
+            const fileName = `informe_${informeId}_${timestamp}`;
+
+            const uploadResult = await cloudinaryService.uploadBuffer(pdfBuffer, {
+              folder: 'scancvai/informes',
+              public_id: fileName,
+              resource_type: 'raw',
+              tags: ['informe', `informe_${informeId}`, `alumno_${alumnoId}`]
+            });
+
+            if (uploadResult.success) {
+              // Guardar URL del PDF en la base de datos
+              await informe.update({
+                pdf_url: uploadResult.url,
+                pdf_public_id: uploadResult.publicId
+              });
+
+              console.log(`✅ PDF del informe ${informeId} guardado en Cloudinary: ${uploadResult.url}`);
+            } else {
+              console.error('❌ Error subiendo PDF a Cloudinary:', uploadResult.error);
+            }
+          } catch (uploadError) {
+            console.error('❌ Error en proceso de subida a Cloudinary:', uploadError);
+            // Continuar con la descarga aunque falle la subida
+          }
+        }
+      }
 
       // Configurar headers para descarga
       res.setHeader('Content-Type', 'application/pdf');

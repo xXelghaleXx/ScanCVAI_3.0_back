@@ -19,6 +19,16 @@ const Informe = sequelize.define("Informe", {
       model: CV,
       key: 'id'
     }
+  },
+  pdf_url: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'URL del informe PDF guardado en Cloudinary'
+  },
+  pdf_public_id: {
+    type: DataTypes.STRING,
+    allowNull: true,
+    comment: 'Public ID de Cloudinary para el PDF'
   }
 }, {
   sequelize,
