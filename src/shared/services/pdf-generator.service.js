@@ -209,6 +209,14 @@ class PDFGenerator {
     const detailedImprovements = this.generateDetailedImprovements(areas_mejora);
     const practicalRecommendations = this.generatePracticalRecommendations(areas_mejora);
 
+    // Extraer análisis completo si existe
+    const experienciaResumen = analisis_completo?.experiencia_resumen || '';
+    const educacionResumen = analisis_completo?.educacion_resumen || '';
+    const perfilProfesional = analisis_completo?.perfil_profesional || '';
+    const logrosDestacados = analisis_completo?.logros_destacados || [];
+    const competenciasClave = analisis_completo?.competencias_clave || [];
+    const areasDesarrollo = analisis_completo?.areas_desarrollo || [];
+
     return `
 <!DOCTYPE html>
 <html lang="es">
@@ -556,6 +564,52 @@ class PDFGenerator {
     <p class="content-text">${resumen || 'No disponible'}</p>
   </div>
 
+  <!-- Análisis Detallado del Candidato -->
+  ${perfilProfesional || experienciaResumen || educacionResumen ? `
+  <div class="section">
+    <h2 class="section-title">Análisis Detallado del Candidato</h2>
+
+    ${perfilProfesional ? `
+    <div class="subsection">
+      <h3 class="subsection-title">Perfil Profesional</h3>
+      <p class="content-text">${perfilProfesional}</p>
+    </div>
+    ` : ''}
+
+    ${experienciaResumen ? `
+    <div class="subsection">
+      <h3 class="subsection-title">Experiencia Profesional</h3>
+      <p class="content-text">${experienciaResumen}</p>
+    </div>
+    ` : ''}
+
+    ${educacionResumen ? `
+    <div class="subsection">
+      <h3 class="subsection-title">Formación Académica</h3>
+      <p class="content-text">${educacionResumen}</p>
+    </div>
+    ` : ''}
+
+    ${logrosDestacados && logrosDestacados.length > 0 ? `
+    <div class="subsection">
+      <h4 class="subsection-title">Logros Destacados</h4>
+      <div class="list">
+        ${logrosDestacados.map(logro => `<div class="list-item">${logro}</div>`).join('')}
+      </div>
+    </div>
+    ` : ''}
+
+    ${competenciasClave && competenciasClave.length > 0 ? `
+    <div class="subsection">
+      <h4 class="subsection-title">Competencias Clave Identificadas</h4>
+      <div class="list">
+        ${competenciasClave.map(comp => `<div class="list-item">${comp}</div>`).join('')}
+      </div>
+    </div>
+    ` : ''}
+  </div>
+  ` : ''}
+
   <!-- Fortalezas -->
   ${fortalezas && fortalezas.length > 0 ? `
   <div class="section">
@@ -652,6 +706,131 @@ class PDFGenerator {
   </div>
   ` : ''}
 
+  <!-- Análisis de Completitud y Calidad del CV -->
+  ${validation || scoring ? `
+  <div class="section">
+    <h2 class="section-title">Análisis de Completitud y Calidad</h2>
+
+    ${validation ? `
+    <div class="subsection">
+      <h3 class="subsection-title">Validación de Contenido</h3>
+      <p class="content-text">
+        El CV ha sido evaluado en términos de completitud de información requerida.
+        A continuación se presenta el análisis de los campos esenciales:
+      </p>
+
+      <div class="stats-grid" style="margin-top: 15px;">
+        <div class="stat-box">
+          <span class="stat-number">${validation.score || 0}/100</span>
+          <span class="stat-label">Puntuación de Completitud</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-number" style="color: ${validation.isValid ? '#27ae60' : '#e74c3c'};">
+            ${validation.isValid ? '✓' : '✗'}
+          </span>
+          <span class="stat-label">${validation.isValid ? 'Válido' : 'Necesita Mejoras'}</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-number">
+            ${Object.values(validation.requiredFields || {}).filter(v => v).length}/${Object.keys(validation.requiredFields || {}).length}
+          </span>
+          <span class="stat-label">Campos Completos</span>
+        </div>
+      </div>
+
+      ${validation.requiredFields ? `
+      <div class="subsection" style="margin-top: 15px;">
+        <h4 class="subsection-title">Campos Requeridos</h4>
+        <div class="list">
+          <div class="list-item" style="color: ${validation.requiredFields.hasName ? '#27ae60' : '#e74c3c'};">
+            ${validation.requiredFields.hasName ? '✓' : '✗'} Nombre del candidato
+          </div>
+          <div class="list-item" style="color: ${validation.requiredFields.hasContact ? '#27ae60' : '#e74c3c'};">
+            ${validation.requiredFields.hasContact ? '✓' : '✗'} Información de contacto
+          </div>
+          <div class="list-item" style="color: ${validation.requiredFields.hasExperience ? '#27ae60' : '#e74c3c'};">
+            ${validation.requiredFields.hasExperience ? '✓' : '✗'} Experiencia laboral
+          </div>
+          <div class="list-item" style="color: ${validation.requiredFields.hasEducation ? '#27ae60' : '#e74c3c'};">
+            ${validation.requiredFields.hasEducation ? '✓' : '✗'} Formación académica
+          </div>
+          <div class="list-item" style="color: ${validation.requiredFields.hasSkills ? '#27ae60' : '#e74c3c'};">
+            ${validation.requiredFields.hasSkills ? '✓' : '✗'} Habilidades y competencias
+          </div>
+        </div>
+      </div>
+      ` : ''}
+
+      ${validation.warnings && validation.warnings.length > 0 ? `
+      <div class="highlight-box" style="margin-top: 15px;">
+        <strong>Observaciones importantes:</strong>
+        <ul style="margin-top: 8px; margin-left: 20px;">
+          ${validation.warnings.map(warning => `<li style="margin-bottom: 5px;">${warning}</li>`).join('')}
+        </ul>
+      </div>
+      ` : ''}
+    </div>
+    ` : ''}
+
+    ${scoring ? `
+    <div class="subsection" style="margin-top: 20px;">
+      <h3 class="subsection-title">Evaluación de Calidad (Scoring)</h3>
+      <p class="content-text">
+        El sistema ha evaluado la calidad del CV basándose en múltiples criterios.
+        Esta evaluación considera factores como completitud, estructura, claridad y contenido relevante.
+      </p>
+
+      <div class="stats-grid" style="margin-top: 15px;">
+        <div class="stat-box">
+          <span class="stat-number">${scoring.puntuacion_final || 0}/100</span>
+          <span class="stat-label">Puntuación Final</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-number">${scoring.nivel_cv || 'N/A'}</span>
+          <span class="stat-label">Nivel del CV</span>
+        </div>
+        <div class="stat-box">
+          <span class="stat-number" style="color: ${scoring.es_cv_ideal ? '#27ae60' : '#f39c12'};">
+            ${scoring.es_cv_ideal ? '⭐' : '📊'}
+          </span>
+          <span class="stat-label">${scoring.es_cv_ideal ? 'CV Ideal' : 'En Progreso'}</span>
+        </div>
+      </div>
+
+      ${scoring.desglose_puntos ? `
+      <div class="subsection" style="margin-top: 15px;">
+        <h4 class="subsection-title">Desglose de Puntuación</h4>
+        <table class="rubric-table">
+          <thead>
+            <tr>
+              <th>Aspecto Evaluado</th>
+              <th>Puntos Obtenidos</th>
+              <th>Peso</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${Object.entries(scoring.desglose_puntos).map(([aspecto, puntos]) => `
+            <tr>
+              <td><strong>${aspecto.replace(/_/g, ' ').charAt(0).toUpperCase() + aspecto.replace(/_/g, ' ').slice(1)}</strong></td>
+              <td>${puntos}</td>
+              <td>${scoring.metricas && scoring.metricas[aspecto] ? scoring.metricas[aspecto] + '%' : 'N/A'}</td>
+            </tr>
+            `).join('')}
+          </tbody>
+        </table>
+      </div>
+      ` : ''}
+
+      ${scoring.recomendacion ? `
+      <div class="highlight-box" style="margin-top: 15px;">
+        <strong>Recomendación del Sistema:</strong> ${scoring.recomendacion}
+      </div>
+      ` : ''}
+    </div>
+    ` : ''}
+  </div>
+  ` : ''}
+
   <!-- Estadísticas del CV -->
   ${stats ? `
   <div class="section">
@@ -659,16 +838,16 @@ class PDFGenerator {
 
     <div class="stats-grid">
       <div class="stat-box">
-        <span class="stat-number">${stats.total_palabras || 0}</span>
+        <span class="stat-number">${stats.total_palabras || stats.words || 0}</span>
         <span class="stat-label">Palabras Totales</span>
       </div>
       <div class="stat-box">
-        <span class="stat-number">${stats.total_lineas || 0}</span>
+        <span class="stat-number">${stats.total_lineas || stats.lines || 0}</span>
         <span class="stat-label">Líneas</span>
       </div>
       <div class="stat-box">
-        <span class="stat-number">${Object.keys(stats.secciones_detectadas || {}).length}</span>
-        <span class="stat-label">Secciones Detectadas</span>
+        <span class="stat-number">${stats.characters ? Math.round(stats.characters / 1000) : 0}K</span>
+        <span class="stat-label">Caracteres</span>
       </div>
     </div>
 

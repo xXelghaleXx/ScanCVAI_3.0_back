@@ -34,8 +34,18 @@ router.get("/:entrevistaId/historial",
   EntrevistaController.obtenerHistorial
 );
 
+// 🆕 Obtener la entrevista activa actual
+router.get("/activa",
+  EntrevistaController.obtenerEntrevistaActiva
+);
+
+// 🔍 Diagnosticar estado de entrevista específica
+router.get("/:entrevistaId/diagnostico",
+  EntrevistaController.diagnosticarEntrevista
+);
+
 // 📋 Obtener todas las entrevistas del alumno
-router.get("/", 
+router.get("/",
   EntrevistaController.obtenerTodasEntrevistas
 );
 

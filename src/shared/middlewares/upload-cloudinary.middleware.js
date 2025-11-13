@@ -24,21 +24,31 @@ if (!isConfigured()) {
 
 // Filtro de archivos
 const fileFilter = (req, file, cb) => {
-  // Tipos MIME permitidos
+  // Tipos MIME permitidos (incluyendo variaciones comunes)
   const allowedMimes = [
     'application/pdf',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
-    'application/msword' // .doc
+    'application/msword', // .doc
+    'application/octet-stream', // Algunos navegadores usan esto para DOCX
+    'application/x-zip-compressed', // A veces DOCX se detecta así
+    'application/zip' // DOCX es técnicamente un ZIP
   ];
 
   // Extensiones permitidas
   const allowedExtensions = ['.pdf', '.docx', '.doc'];
   const fileExtension = path.extname(file.originalname).toLowerCase();
 
-  if (allowedMimes.includes(file.mimetype) && allowedExtensions.includes(fileExtension)) {
+  // Verificar primero por extensión (más confiable)
+  if (allowedExtensions.includes(fileExtension)) {
+    console.log(`✅ Archivo aceptado por extensión: ${file.originalname} (MIME: ${file.mimetype})`);
+    cb(null, true);
+  } else if (allowedMimes.includes(file.mimetype)) {
+    // Fallback: verificar por MIME type si la extensión no está clara
+    console.log(`✅ Archivo aceptado por MIME type: ${file.originalname} (MIME: ${file.mimetype})`);
     cb(null, true);
   } else {
-    const error = new Error('Formato de archivo no válido. Solo se permiten archivos PDF, DOC y DOCX.');
+    console.log(`❌ Archivo rechazado: ${file.originalname} (MIME: ${file.mimetype}, Ext: ${fileExtension})`);
+    const error = new Error(`Formato de archivo no válido. Solo se permiten archivos PDF, DOC y DOCX. Recibido: ${fileExtension} (MIME: ${file.mimetype})`);
     error.code = 'INVALID_FILE_TYPE';
     cb(error, false);
   }

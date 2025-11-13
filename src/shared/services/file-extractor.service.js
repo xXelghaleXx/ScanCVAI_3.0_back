@@ -69,9 +69,18 @@ class FileExtractorService {
   // 📝 Extraer texto de DOCX
   async extractFromDOCX(filePath) {
     try {
+      console.log('📄 Iniciando extracción de DOCX desde:', filePath);
+
       // Para DOCX, mammoth necesita un buffer
       const dataBuffer = await this.getFileBuffer(filePath);
+      console.log('✅ Buffer obtenido, tamaño:', dataBuffer.length, 'bytes');
+
       const result = await mammoth.extractRawText({ buffer: dataBuffer });
+      console.log('✅ Texto extraído exitosamente:', result.value.length, 'caracteres');
+
+      if (result.messages && result.messages.length > 0) {
+        console.log('⚠️ Advertencias de mammoth:', result.messages);
+      }
 
       return {
         success: true,
@@ -79,16 +88,17 @@ class FileExtractorService {
         warnings: result.messages,
         stats: {
           characters: result.value.length,
-          words: result.value.split(/\s+/).length,
+          words: result.value.split(/\s+/).filter(w => w.length > 0).length,
           lines: result.value.split('\n').length
         }
       };
 
     } catch (error) {
       console.error('❌ Error extrayendo DOCX:', error);
+      console.error('Stack trace:', error.stack);
       return {
         success: false,
-        error: error.message,
+        error: `Error al procesar archivo DOCX: ${error.message}`,
         text: ''
       };
     }
