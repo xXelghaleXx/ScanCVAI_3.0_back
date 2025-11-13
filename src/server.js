@@ -18,9 +18,12 @@ const app = express();
 // ========== CONFIGURACIÓN CORS (AGREGAR DESPUÉS DE CREAR APP) ==========
 const corsOptions = {
   origin: [
-    // URLs de producción
-    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []), // URL desde .env
-    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []), // URLs adicionales desde .env
+    // URLs de producción - Vercel
+    'https://scan-cvai-3-0-front-rx6t.vercel.app',
+    'https://scan-cvai-3-0-front.vercel.app',
+    // URLs de producción desde .env
+    ...(process.env.FRONTEND_URL ? [process.env.FRONTEND_URL] : []),
+    ...(process.env.ALLOWED_ORIGINS ? process.env.ALLOWED_ORIGINS.split(',') : []),
     // URLs de desarrollo (solo en modo desarrollo)
     ...(process.env.NODE_ENV !== 'production' ? [
       'http://localhost:5173',    // Vite dev server (React)
