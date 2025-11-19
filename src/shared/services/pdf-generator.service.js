@@ -199,11 +199,14 @@ class PDFGenerator {
       habilidades_tecnicas,
       habilidades_blandas,
       areas_mejora,
-      rubrica,
       scoring,
       validation,
       stats,
-      analisis_completo
+      analisis_completo,
+      diferencias_con_referencia,
+      recomendaciones_especificas,
+      similitud_con_ideal,
+      cumple_estandares_tecsup
     } = data;
 
     const detailedImprovements = this.generateDetailedImprovements(areas_mejora);
@@ -642,65 +645,59 @@ class PDFGenerator {
   </div>
   ` : ''}
 
-  <!-- Evaluación de Rúbrica Oficial TECSUP -->
-  ${rubrica ? `
+  <!-- Evaluación según Estándares TECSUP -->
+  ${similitud_con_ideal !== null || diferencias_con_referencia?.length > 0 || recomendaciones_especificas?.length > 0 ? `
   <div class="section" style="page-break-before: always;">
-    <h2 class="section-title">Evaluación Basada en Rúbrica Oficial TECSUP</h2>
+    <h2 class="section-title">📋 Evaluación según Estándares Profesionales TECSUP</h2>
 
-    <div class="score-card">
-      <div class="score-label">Puntuación Total</div>
-      <div class="score-value">${rubrica.puntuacion_total}/100</div>
-      <div class="score-label" style="font-size: 14pt; font-weight: 600; margin-top: 10px;">
-        ${rubrica.nivel_desempenio?.nombre || 'N/A'}
+    <div class="highlight-box" style="margin-bottom: 20px;">
+      <strong>🎓 Sobre TECSUP:</strong> Tu CV ha sido comparado con el CV de referencia oficial de TECSUP,
+      que representa el formato, estructura y contenido ideal que la institución espera de sus egresados y estudiantes.
+    </div>
+
+    ${similitud_con_ideal !== null ? `
+    <div class="score-card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">
+      <div class="score-label">Similitud con CV Ideal TECSUP</div>
+      <div class="score-value">${similitud_con_ideal}%</div>
+      <div class="score-label" style="font-size: 11pt; margin-top: 10px;">
+        ${similitud_con_ideal >= 80 ? '⭐ Excelente - Cumple con estándares TECSUP' :
+          similitud_con_ideal >= 60 ? '📊 Bueno - Cerca del estándar TECSUP' :
+          '📈 En progreso - Necesita mejoras para alcanzar el estándar TECSUP'}
       </div>
+      ${cumple_estandares_tecsup !== null ? `
       <div class="score-label" style="font-size: 10pt; margin-top: 5px;">
-        ${rubrica.nivel_desempenio?.descripcion || ''}
+        ${cumple_estandares_tecsup ? '✅ Cumple con estándares profesionales TECSUP' : '⚠️ Requiere ajustes para cumplir estándares TECSUP'}
       </div>
+      ` : ''}
     </div>
+    ` : ''}
 
-    <h3 class="subsection-title" style="margin-top: 20px;">Evaluación por Criterios</h3>
-    <table class="rubric-table">
-      <thead>
-        <tr>
-          <th>Criterio</th>
-          <th>Peso</th>
-          <th>Puntos Obtenidos</th>
-          <th>Nivel</th>
-        </tr>
-      </thead>
-      <tbody>
-        ${Object.entries(rubrica.criterios || {}).map(([key, criterio]) => `
-        <tr>
-          <td><strong>${criterio.nombre}</strong></td>
-          <td>${criterio.peso} pts</td>
-          <td>${criterio.puntos.toFixed(1)} pts</td>
-          <td>${criterio.nivel}</td>
-        </tr>
-        `).join('')}
-      </tbody>
-    </table>
-
-    ${rubrica.fortalezas && rubrica.fortalezas.length > 0 ? `
+    ${diferencias_con_referencia && diferencias_con_referencia.length > 0 ? `
     <div class="subsection" style="margin-top: 20px;">
-      <h4 class="subsection-title">Fortalezas Identificadas (Rúbrica)</h4>
+      <h3 class="subsection-title">📊 Diferencias con el CV Oficial de TECSUP</h3>
+      <p class="content-text">
+        Se han identificado las siguientes diferencias entre tu CV y el CV de referencia de TECSUP:
+      </p>
       <div class="list">
-        ${rubrica.fortalezas.map(f => `<div class="list-item">${f}</div>`).join('')}
+        ${diferencias_con_referencia.map(dif => `<div class="list-item">${dif}</div>`).join('')}
       </div>
     </div>
     ` : ''}
 
-    ${rubrica.areas_mejora && rubrica.areas_mejora.length > 0 ? `
-    <div class="subsection" style="margin-top: 15px;">
-      <h4 class="subsection-title">Áreas de Mejora (Rúbrica)</h4>
-      <div class="list">
-        ${rubrica.areas_mejora.map(a => `<div class="list-item">${a}</div>`).join('')}
+    ${recomendaciones_especificas && recomendaciones_especificas.length > 0 ? `
+    <div class="subsection" style="margin-top: 20px;">
+      <h3 class="subsection-title">💡 Recomendaciones Específicas según TECSUP</h3>
+      <p class="content-text">
+        Para que tu CV se ajuste al formato profesional esperado por TECSUP, implementa las siguientes mejoras:
+      </p>
+      ${recomendaciones_especificas.map(rec => `
+      <div class="improvement-card">
+        <div class="improvement-header">
+          <h3 class="improvement-title">${rec}</h3>
+          <span class="priority-badge priority-alta">TECSUP</span>
+        </div>
       </div>
-    </div>
-    ` : ''}
-
-    ${rubrica.comentario_final ? `
-    <div class="highlight-box" style="margin-top: 15px;">
-      <strong>Comentario Final:</strong> ${rubrica.comentario_final}
+      `).join('')}
     </div>
     ` : ''}
   </div>

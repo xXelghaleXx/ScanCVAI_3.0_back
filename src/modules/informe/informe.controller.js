@@ -229,7 +229,7 @@ class InformeController {
       if (!pdfBuffer) {
         // Preparar datos para el PDF (incluyendo análisis completo guardado en CV)
         const contenidoPDF = {
-          titulo: `Informe de Análisis de CV`,
+          titulo: `Informe de Análisis de CV - Estándares TECSUP`,
           fecha: informe.fecha_generacion,
           alumno: informe.cv.alumno.nombre,
           resumen: informe.resumen,
@@ -244,9 +244,13 @@ class InformeController {
           // Agregar datos del análisis completo guardados en el CV
           analisis_completo: informe.cv.analisis_ia,
           scoring: informe.cv.scoring_data,
-          rubrica: informe.cv.rubrica_evaluation,
           validation: informe.cv.validation_data,
-          stats: informe.cv.stats_data
+          stats: informe.cv.stats_data,
+          // Nuevos campos de comparación con CV de referencia TECSUP
+          diferencias_con_referencia: informe.cv.analisis_ia?.diferencias_con_referencia || [],
+          recomendaciones_especificas: informe.cv.analisis_ia?.recomendaciones_especificas || [],
+          similitud_con_ideal: informe.cv.analisis_ia?.similitud_con_ideal || null,
+          cumple_estandares_tecsup: informe.cv.analisis_ia?.cumple_estandares_tecsup || null
         };
 
         // Generar PDF
