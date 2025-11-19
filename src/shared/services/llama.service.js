@@ -203,7 +203,7 @@ ${contenidoTexto.substring(0, 1500)}`;
     const messages = [
       {
         role: 'system',
-        content: 'Eres un analista de recursos humanos experto. Tu trabajo es comparar CVs con un estándar ideal y proporcionar retroalimentación específica y accionable. Responde ÚNICAMENTE con JSON válido, sin markdown ni explicaciones adicionales.'
+        content: 'Eres un analista de recursos humanos especializado en los estándares profesionales de TECSUP. Tu trabajo es evaluar CVs según el formato y contenido oficial de TECSUP, comparándolos con el CV de referencia institucional. Proporciona retroalimentación específica y accionable basada en las mejores prácticas de TECSUP. Responde ÚNICAMENTE con JSON válido, sin markdown ni explicaciones adicionales.'
       },
       {
         role: 'user',

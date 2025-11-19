@@ -211,10 +211,11 @@ class CVController {
           areas_mejora: analisisIA.analisis.areas_mejora || [],
           experiencia_resumen: analisisIA.analisis.experiencia_resumen || "",
           educacion_resumen: analisisIA.analisis.educacion_resumen || "",
-          // Nuevos campos de comparación con CV de referencia
+          // Nuevos campos de comparación con CV de referencia de TECSUP
           diferencias_con_referencia: analisisIA.analisis.diferencias_con_referencia || [],
           recomendaciones_especificas: analisisIA.analisis.recomendaciones_especificas || [],
-          similitud_con_ideal: analisisIA.analisis.similitud_con_ideal || null
+          similitud_con_ideal: analisisIA.analisis.similitud_con_ideal || null,
+          cumple_estandares_tecsup: analisisIA.analisis.cumple_estandares_tecsup || null
         },
         scoring: {
           puntuacion_final: scoringResult.puntuacion_final,

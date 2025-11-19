@@ -1,29 +1,31 @@
-# 📄 CV de Referencia
+# 📄 CV de Referencia Oficial de TECSUP
 
-Este directorio contiene el **CV de ejemplo ideal** que se utiliza como plantilla de comparación para evaluar los CVs de los usuarios.
+Este directorio contiene el **CV de ejemplo oficial de TECSUP** que se utiliza como plantilla estándar para evaluar los CVs de los usuarios según los estándares profesionales de la institución.
 
 ## 🎯 Propósito
 
-El archivo `CV_ejemplo.docx` sirve como **estándar de referencia** para:
+El archivo `CV_ejemplo.docx` sirve como **estándar oficial de TECSUP** para:
 
-1. **Comparar estructura**: El sistema compara la estructura del CV del usuario con este CV ideal
-2. **Identificar diferencias**: Detecta qué secciones o información le falta al CV del usuario
-3. **Generar recomendaciones**: Proporciona sugerencias específicas basadas en lo que tiene el CV ideal
-4. **Evaluar calidad**: Calcula un porcentaje de similitud con el CV ideal
+1. **Comparar estructura**: El sistema compara la estructura del CV del usuario con el formato profesional de TECSUP
+2. **Identificar diferencias**: Detecta qué secciones o información le falta al CV del usuario según los estándares de TECSUP
+3. **Generar recomendaciones**: Proporciona sugerencias específicas basadas en las mejores prácticas de TECSUP
+4. **Evaluar calidad**: Calcula un porcentaje de similitud con el CV ideal de TECSUP
+5. **Validar estándares**: Verifica que el CV cumpla con los requisitos profesionales esperados por TECSUP
 
 ## 🔧 Cómo funciona
 
 Cuando un usuario sube su CV:
 
 1. El sistema extrae el texto del CV del usuario
-2. Carga el contenido del `CV_ejemplo.docx` (CV de referencia)
-3. Envía ambos CVs a la IA con un prompt comparativo
-4. La IA analiza las diferencias y genera:
-   - ✅ Fortalezas del CV del usuario
-   - ⚠️ Áreas de mejora comparadas con el CV ideal
-   - 📊 Diferencias específicas con la referencia
-   - 💡 Recomendaciones concretas para mejorar
-   - 📈 Porcentaje de similitud con el CV ideal
+2. Carga el contenido del `CV_ejemplo.docx` (CV de referencia oficial de TECSUP)
+3. Envía ambos CVs a la IA con un prompt comparativo basado en estándares TECSUP
+4. La IA analiza las diferencias según los criterios de TECSUP y genera:
+   - ✅ Fortalezas del CV del usuario según estándares TECSUP
+   - ⚠️ Áreas de mejora comparadas con el CV oficial de TECSUP
+   - 📊 Diferencias específicas con el formato TECSUP
+   - 💡 Recomendaciones concretas basadas en mejores prácticas TECSUP
+   - 📈 Porcentaje de similitud con el CV ideal de TECSUP
+   - ✔️ Verificación de cumplimiento con estándares TECSUP
 
 ## 📁 Ubicación del archivo
 
