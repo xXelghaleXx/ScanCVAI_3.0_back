@@ -210,7 +210,11 @@ class CVController {
           habilidades_blandas: analisisIA.analisis.habilidades_blandas || [],
           areas_mejora: analisisIA.analisis.areas_mejora || [],
           experiencia_resumen: analisisIA.analisis.experiencia_resumen || "",
-          educacion_resumen: analisisIA.analisis.educacion_resumen || ""
+          educacion_resumen: analisisIA.analisis.educacion_resumen || "",
+          // Nuevos campos de comparación con CV de referencia
+          diferencias_con_referencia: analisisIA.analisis.diferencias_con_referencia || [],
+          recomendaciones_especificas: analisisIA.analisis.recomendaciones_especificas || [],
+          similitud_con_ideal: analisisIA.analisis.similitud_con_ideal || null
         },
         scoring: {
           puntuacion_final: scoringResult.puntuacion_final,

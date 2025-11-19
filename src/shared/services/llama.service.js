@@ -173,7 +173,19 @@ class LlamaService {
 
   // 📄 RF-102: Analizar contenido de CV
   async analizarCV(contenidoTexto, nombreAlumno = '') {
-    const prompt = `Analiza este CV y responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin explicaciones):
+    // Importar el servicio de CV de referencia
+    const referenceCVService = require('./reference-cv.service');
+
+    let prompt;
+
+    // Intentar usar el CV de referencia para comparación
+    try {
+      prompt = await referenceCVService.getComparativePrompt(contenidoTexto);
+    } catch (error) {
+      console.warn('⚠️ No se pudo cargar CV de referencia, usando análisis estándar', error.message);
+
+      // Fallback al análisis estándar si no hay CV de referencia
+      prompt = `Analiza este CV y responde ÚNICAMENTE con un objeto JSON válido (sin markdown, sin explicaciones):
 
 {
   "fortalezas": ["fortaleza1", "fortaleza2"],
@@ -186,11 +198,12 @@ class LlamaService {
 
 CV a analizar:
 ${contenidoTexto.substring(0, 1500)}`;
+    }
 
     const messages = [
       {
         role: 'system',
-        content: 'Eres un analista de recursos humanos. Responde ÚNICAMENTE con JSON válido, sin markdown ni explicaciones adicionales.'
+        content: 'Eres un analista de recursos humanos experto. Tu trabajo es comparar CVs con un estándar ideal y proporcionar retroalimentación específica y accionable. Responde ÚNICAMENTE con JSON válido, sin markdown ni explicaciones adicionales.'
       },
       {
         role: 'user',
