@@ -1,6 +1,6 @@
 const path = require('path');
 const fs = require('fs');
-const logger = require('../logger.service');
+const logger = require('../services/logger.service');
 
 class ReferenceCVController {
     /**
