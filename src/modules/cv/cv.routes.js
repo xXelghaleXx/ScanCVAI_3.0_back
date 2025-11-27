@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const CVController = require("./cv.controller");
+const ReferenceCVController = require("../../shared/controllers/reference-cv.controller");
 const authMiddleware = require("../../shared/middlewares/auth.middleware");
 // Usar Cloudinary en lugar de almacenamiento local
 const { uploadCV } = require("../../shared/middlewares/upload-cloudinary.middleware");
@@ -17,14 +18,14 @@ router.post("/upload",
 );
 
 // 🧠 RF-102: Procesar CV con IA
-router.post("/:cvId/procesar", 
+router.post("/:cvId/procesar",
   validateCVProcessing,
   simpleRateLimit(5, 60 * 1000),
   CVController.procesarCV
 );
 
 // 📊 RF-103: Generar informe detallado
-router.post("/:cvId/informe", 
+router.post("/:cvId/informe",
   validateIdParam('cvId'),
   simpleRateLimit(5, 60 * 1000),
   CVController.generarInforme
@@ -51,9 +52,12 @@ router.get("/historial/comparar", CVController.compararCVs);
 router.get("/", CVController.obtenerCVs);
 
 // 🗑️ Eliminar CV
-router.delete("/:cvId", 
+router.delete("/:cvId",
   validateIdParam('cvId'),
   CVController.eliminarCV
 );
+
+// 📄 Obtener CV de referencia (público para usuarios autenticados)
+router.get("/reference/cv-ejemplo", ReferenceCVController.obtenerCVReferencia);
 
 module.exports = router;
