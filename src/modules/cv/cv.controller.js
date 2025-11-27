@@ -14,10 +14,10 @@ const llamaService = require("../../shared/services/llama.service");
 const fileExtractorService = require("../../shared/services/file-extractor.service");
 const utilsService = require("../../shared/services/utils.service");
 const logger = require("../../shared/services/logger.service");
-const cvScoringService = require("../../shared/services/cv-scoring.service");
+const cvScoringService = require("../../shared/services/scoring.service");
 
 class CVController {
-  
+
   // 📄 RF-100: Subir CV
   static async subirCV(req, res) {
     try {
@@ -79,7 +79,7 @@ class CVController {
       }
 
       if (cv.contenido_extraido) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "CV ya fue procesado anteriormente",
           processed_at: cv.updatedAt
         });
@@ -94,7 +94,7 @@ class CVController {
       // 1. Extraer texto del archivo
       logger.info("Extrayendo texto del archivo...");
       const extractionResult = await fileExtractorService.extractText(cv.archivo, cv.file_extension);
-      
+
       if (!extractionResult.success) {
         logger.cvAnalysisFailed(alumnoId, cvId, new Error(extractionResult.error));
         return res.status(400).json({
@@ -104,10 +104,10 @@ class CVController {
       }
 
       const textoExtraido = fileExtractorService.cleanText(extractionResult.text);
-      
+
       // 2. RF-101: Validar contenido extraído
       const validation = extractionResult.validation;
-      
+
       if (!validation.isValid) {
         logger.warn("CV no cumple validaciones mínimas", {
           user_id: alumnoId,
@@ -115,21 +115,21 @@ class CVController {
           score: validation.score,
           warnings: validation.warnings
         });
-        
+
         // Aún procesamos pero advertimos al usuario
       }
 
       // 3. Analizar con IA (Llama 3.1)
       logger.aiRequestSent(alumnoId, 'cv_analysis', textoExtraido.length);
-      
+
       const analisisIA = await llamaService.analizarCV(textoExtraido, cv.alumno.nombre);
-      
+
       if (!analisisIA.success) {
         logger.aiError(alumnoId, 'cv_analysis', new Error(analisisIA.error));
-        
+
         // Guardar contenido extraído aunque falle el análisis IA
         await cv.update({ contenido_extraido: textoExtraido });
-        
+
         return res.status(500).json({
           error: "Error en análisis de IA, pero texto extraído correctamente",
           text_extracted: true,
@@ -139,8 +139,8 @@ class CVController {
       }
 
       logger.aiResponseReceived(
-        alumnoId, 
-        'cv_analysis', 
+        alumnoId,
+        'cv_analysis',
         JSON.stringify(analisisIA.analisis).length,
         Date.now() - startTime
       );
@@ -252,7 +252,7 @@ class CVController {
       }
 
       if (!cv.contenido_extraido) {
-        return res.status(400).json({ 
+        return res.status(400).json({
           error: "CV debe ser procesado primero antes de generar informe",
           needs_processing: true
         });
@@ -261,7 +261,7 @@ class CVController {
       // Si ya existe un informe, devolverlo
       if (cv.informes && cv.informes.length > 0) {
         const informe = cv.informes[0]; // Tomar el más reciente
-        
+
         logger.info("Informe existente encontrado", {
           user_id: alumnoId,
           cv_id: cvId,
@@ -293,7 +293,7 @@ class CVController {
 
       // Re-analizar con IA para generar nuevo informe
       const analisisIA = await llamaService.analizarCV(cv.contenido_extraido, cv.alumno.nombre);
-      
+
       if (!analisisIA.success) {
         return res.status(500).json({
           error: "Error regenerando análisis para informe",
@@ -303,7 +303,7 @@ class CVController {
 
       // Generar nuevo informe
       const nuevoInforme = await CVController._generarInformeDesdeAnalisis(cv, analisisIA.analisis);
-      
+
       if (!nuevoInforme) {
         return res.status(500).json({ error: "Error generando informe" });
       }
@@ -372,9 +372,9 @@ class CVController {
     try {
       // Buscar habilidad existente
       let habilidad = await Habilidad.findOne({
-        where: { 
+        where: {
           habilidad: habilidadNombre.trim(),
-          tipoId 
+          tipoId
         }
       });
 
@@ -469,7 +469,7 @@ class CVController {
   static async eliminarCV(req, res) {
     const sequelize = require("../../config/database.config");
     const transaction = await sequelize.transaction();
-    
+
     try {
       const { cvId } = req.params;
       const alumnoId = req.user.id;
@@ -508,21 +508,21 @@ class CVController {
       // 1. Eliminar registros de informes en orden
       for (const informe of cv.informes) {
         // Eliminar detalles del informe
-        await InformeFortalezas.destroy({ 
-          where: { informeId: informe.id }, 
-          transaction 
+        await InformeFortalezas.destroy({
+          where: { informeId: informe.id },
+          transaction
         });
-        
-        await InformeHabilidades.destroy({ 
-          where: { informeId: informe.id }, 
-          transaction 
+
+        await InformeHabilidades.destroy({
+          where: { informeId: informe.id },
+          transaction
         });
-        
-        await InformeAreasMejora.destroy({ 
-          where: { informeId: informe.id }, 
-          transaction 
+
+        await InformeAreasMejora.destroy({
+          where: { informeId: informe.id },
+          transaction
         });
-        
+
         // Eliminar el informe
         await informe.destroy({ transaction });
       }
@@ -561,7 +561,7 @@ class CVController {
         archivo: cv.archivo
       });
 
-      res.json({ 
+      res.json({
         message: "CV y todos sus registros relacionados eliminados correctamente",
         deleted: {
           cv_id: cvId,
@@ -586,7 +586,7 @@ class CVController {
     try {
       const alumnoId = req.user.id;
       const { page = 1, limit = 10, sort = 'desc' } = req.query;
-      
+
       const offset = (page - 1) * limit;
 
       // Obtener CVs con paginación
@@ -667,9 +667,9 @@ class CVController {
       logger.error("Error obteniendo historial de CVs", error, {
         user_id: req.user?.id
       });
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: error.message 
+        error: error.message
       });
     }
   }
@@ -711,8 +711,8 @@ class CVController {
           procesados: cvs.filter(cv => cv.contenido_extraido).length,
           pendientes: cvs.filter(cv => !cv.contenido_extraido).length,
           con_informe: cvs.filter(cv => cv.informes && cv.informes.length > 0).length,
-          porcentaje_procesados: cvs.length > 0 
-            ? Math.round((cvs.filter(cv => cv.contenido_extraido).length / cvs.length) * 100) 
+          porcentaje_procesados: cvs.length > 0
+            ? Math.round((cvs.filter(cv => cv.contenido_extraido).length / cvs.length) * 100)
             : 0
         },
         temporales: {
@@ -725,7 +725,7 @@ class CVController {
             fecha: cvs[cvs.length - 1].fecha_creacion,
             archivo: cvs[cvs.length - 1].archivo.split('/').pop()
           } : null,
-          dias_activo: cvs.length > 0 
+          dias_activo: cvs.length > 0
             ? Math.floor((Date.now() - new Date(cvs[cvs.length - 1].fecha_creacion).getTime()) / (1000 * 60 * 60 * 24))
             : 0
         },
@@ -748,9 +748,9 @@ class CVController {
       logger.error("Error obteniendo estadísticas de historial", error, {
         user_id: req.user?.id
       });
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: error.message 
+        error: error.message
       });
     }
   }
@@ -816,10 +816,10 @@ class CVController {
           const nombreArchivo = cv.archivo.toLowerCase();
           const contenido = cv.contenido_extraido ? cv.contenido_extraido.toLowerCase() : '';
           const habilidades = cv.cv_habilidades.map(h => h.habilidad.habilidad.toLowerCase()).join(' ');
-          
-          return nombreArchivo.includes(terminoBusqueda) || 
-                 contenido.includes(terminoBusqueda) ||
-                 habilidades.includes(terminoBusqueda);
+
+          return nombreArchivo.includes(terminoBusqueda) ||
+            contenido.includes(terminoBusqueda) ||
+            habilidades.includes(terminoBusqueda);
         });
       }
 
@@ -847,9 +847,9 @@ class CVController {
       logger.error("Error buscando en historial", error, {
         user_id: req.user?.id
       });
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: error.message 
+        error: error.message
       });
     }
   }
@@ -861,7 +861,7 @@ class CVController {
       const { formato = 'json' } = req.query;
 
       const alumno = await Alumno.findByPk(alumnoId);
-      
+
       const cvs = await CV.findAll({
         where: { alumnoId },
         include: [
@@ -942,9 +942,9 @@ class CVController {
       logger.error("Error exportando historial", error, {
         user_id: req.user?.id
       });
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: error.message 
+        error: error.message
       });
     }
   }
@@ -959,7 +959,7 @@ class CVController {
         cv.cv_habilidades.forEach(cvHab => {
           const nombre = cvHab.habilidad.habilidad;
           const tipo = cvHab.habilidad.tipo.nombre;
-          
+
           habilidadesMap.set(nombre, (habilidadesMap.get(nombre) || 0) + 1);
           tiposMap.set(tipo, (tiposMap.get(tipo) || 0) + 1);
         });
@@ -1104,9 +1104,9 @@ class CVController {
       logger.error("Error comparando CVs", error, {
         user_id: req.user?.id
       });
-      res.status(500).json({ 
+      res.status(500).json({
         success: false,
-        error: error.message 
+        error: error.message
       });
     }
   }
