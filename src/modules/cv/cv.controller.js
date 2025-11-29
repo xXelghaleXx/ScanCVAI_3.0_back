@@ -14,7 +14,7 @@ const llamaService = require("../../shared/services/llama.service");
 const fileExtractorService = require("../../shared/services/file-extractor.service");
 const utilsService = require("../../shared/services/utils.service");
 const logger = require("../../shared/services/logger.service");
-const cvScoringService = require("../../shared/services/scoring.service");
+// const cvScoringService = require("../../shared/services/scoring.service"); // TODO: CV scoring not implemented
 
 class CVController {
 
@@ -146,22 +146,15 @@ class CVController {
       );
 
       // 4. Calcular scoring del CV
-      const scoringResult = cvScoringService.calcularPuntuacionCV(
-        validation,
-        analisisIA.analisis,
-        extractionResult.stats
-      );
-
-      const metricsAnalysis = cvScoringService.generarAnalisisMetricas(scoringResult);
+      // TODO: CV scoring not implemented - scoring.service only has interview scoring
+      // const scoringResult = cvScoringService.calcularPuntuacionCV(...);
+      // const metricsAnalysis = cvScoringService.generarAnalisisMetricas(scoringResult);
 
       // 5. Guardar todos los datos del análisis en BD
       await cv.update({
         contenido_extraido: textoExtraido,
         analisis_ia: analisisIA.analisis,
-        scoring_data: {
-          ...scoringResult,
-          analisis_metricas: metricsAnalysis
-        },
+        // scoring_data: null, // TODO: Implement CV scoring
         validation_data: validation,
         stats_data: extractionResult.stats
       });
@@ -198,18 +191,10 @@ class CVController {
           similitud_con_ideal: analisisIA.analisis.similitud_con_ideal || null,
           cumple_estandares_tecsup: analisisIA.analisis.cumple_estandares_tecsup || null
         },
-        scoring: {
-          puntuacion_final: scoringResult.puntuacion_final,
-          es_cv_ideal: scoringResult.es_cv_ideal,
-          nivel_cv: scoringResult.nivel_cv,
-          metricas: scoringResult.metricas,
-          desglose: scoringResult.desglose_puntos,
-          analisis_metricas: metricsAnalysis,
-          recomendacion: scoringResult.recomendacion
-        },
+        // scoring: null, // TODO: Implement CV scoring
         stats: extractionResult.stats,
         ready_for_report: true,
-        mostrar_scoring: scoringResult.es_cv_ideal // Frontend decidirá qué mostrar
+        // mostrar_scoring: false // TODO: Implement CV scoring
       });
 
     } catch (error) {
