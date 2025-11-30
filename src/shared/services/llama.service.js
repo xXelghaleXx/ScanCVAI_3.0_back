@@ -11,7 +11,7 @@ class LlamaService {
     this.localBaseURL = process.env.LLAMA_BASE_URL || 'http://localhost:11434';
     this.localClient = axios.create({
       baseURL: this.localBaseURL,
-      timeout: 80000,
+      timeout: 180000, // 3 minutos para modelos lentos en Render
       headers: {
         'Content-Type': 'application/json'
       }
@@ -20,7 +20,7 @@ class LlamaService {
     // Cliente para Groq
     this.groqClient = axios.create({
       baseURL: 'https://api.groq.com/openai/v1',
-      timeout: 60000,
+      timeout: 90000, // 90 segundos para Groq
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${this.groqApiKey}`
@@ -214,7 +214,7 @@ ${contenidoTexto.substring(0, 1500)}`;
     try {
       const response = await this.chatCompletion(messages, {
         temperature: 0.2,
-        max_tokens: 600
+        max_tokens: 500 // Reducido de 600 a 500 para respuestas más rápidas
       });
 
       if (!response.success) {
