@@ -7,7 +7,7 @@
  * 3. Experiencia Académica (20 pts)
  * 4. Experiencia Laboral (20 pts)
  * 5. Certificaciones (15 pts)
- * 6. Información Adicional (15 pts)
+ * 6. Información Adicional (10 pts)
  *
  * Total: 100 puntos
  */
@@ -65,12 +65,12 @@ class RubricaEvaluationService {
         }
       },
       informacion_adicional: {
-        peso: 15,
+        peso: 10,
         niveles: {
-          excelente: { min: 13, max: 15, descripcion: 'Idiomas, voluntariado, liderazgo, desarrollo continuo' },
-          bueno: { min: 10, max: 12, descripcion: '2+ elementos adicionales relevantes' },
-          regular: { min: 7, max: 9, descripcion: '1 elemento adicional básico' },
-          deficiente: { min: 0, max: 6, descripcion: 'Sección vacía o irrelevante' }
+          excelente: { min: 9, max: 10, descripcion: 'Idiomas, voluntariado, liderazgo, desarrollo continuo' },
+          bueno: { min: 7, max: 8, descripcion: '2+ elementos adicionales relevantes' },
+          regular: { min: 5, max: 6, descripcion: '1 elemento adicional básico' },
+          deficiente: { min: 0, max: 4, descripcion: 'Sección vacía o irrelevante' }
         }
       }
     },
@@ -212,7 +212,7 @@ class RubricaEvaluationService {
 
     // Evaluar extensión y calidad
     if (palabrasPerfil >= 40 && palabrasPerfil <= 80 && lineas >= 4) {
-      puntos = 14; // Excelente
+      puntos = 15; // Excelente - Máximo del peso
     } else if (palabrasPerfil >= 30 && palabrasPerfil <= 100) {
       puntos = 11; // Bueno
     } else if (palabrasPerfil >= 15) {
@@ -246,7 +246,7 @@ class RubricaEvaluationService {
 
     // Evaluar formato
     if (seccionesPresentes === 5 && stats.pageCount <= 2) {
-      puntos = 19; // Excelente
+      puntos = 20; // Excelente - Máximo del peso
     } else if (seccionesPresentes >= 4) {
       puntos = 15; // Bueno
     } else if (seccionesPresentes >= 3) {
@@ -276,7 +276,7 @@ class RubricaEvaluationService {
     const numProyectos = Array.isArray(proyectos) ? proyectos.length : 0;
 
     if (numProyectos >= 3) {
-      puntos = 19; // Excelente
+      puntos = 20; // Excelente - Máximo del peso
     } else if (numProyectos === 2) {
       puntos = 15; // Bueno
     } else if (numProyectos === 1) {
@@ -306,11 +306,11 @@ class RubricaEvaluationService {
     const numExperiencias = Array.isArray(experiencias) ? experiencias.length : 0;
 
     if (numExperiencias >= 3) {
-      puntos = 14; // Excelente
+      puntos = 20; // Excelente - Máximo del peso (CORREGIDO de 14 a 20)
     } else if (numExperiencias === 2) {
-      puntos = 11; // Bueno
+      puntos = 15; // Bueno
     } else if (numExperiencias === 1) {
-      puntos = 8; // Regular
+      puntos = 10; // Regular
     } else {
       puntos = 3; // Deficiente
     }
@@ -336,7 +336,7 @@ class RubricaEvaluationService {
     const numCertificaciones = Array.isArray(certificaciones) ? certificaciones.length : 0;
 
     if (numCertificaciones >= 3) {
-      puntos = 14; // Excelente
+      puntos = 15; // Excelente - Máximo del peso
     } else if (numCertificaciones === 2) {
       puntos = 11; // Bueno
     } else if (numCertificaciones === 1) {
@@ -369,13 +369,13 @@ class RubricaEvaluationService {
     if (analisis.voluntariado || analisis.actividades_extracurriculares) elementos++;
 
     if (elementos >= 4) {
-      puntos = 14; // Excelente
+      puntos = 10; // Excelente - Máximo del peso (corregido de 15 a 10)
     } else if (elementos >= 2) {
-      puntos = 11; // Bueno
+      puntos = 7; // Bueno
     } else if (elementos === 1) {
-      puntos = 8; // Regular
+      puntos = 5; // Regular
     } else {
-      puntos = 3; // Deficiente
+      puntos = 2; // Deficiente
     }
 
     const nivel = this.determinarNivelCriterio(puntos, this.RUBRICA.criterios.informacion_adicional);
@@ -470,8 +470,8 @@ class RubricaEvaluationService {
     const total = respuestas.length;
 
     const terminosTecnicos = ['código', 'función', 'variable', 'clase', 'método', 'algoritmo', 'base de datos',
-                              'api', 'framework', 'librería', 'componente', 'módulo', 'testing', 'debug',
-                              'deployment', 'servidor', 'cliente', 'frontend', 'backend', 'sql', 'react', 'node'];
+      'api', 'framework', 'librería', 'componente', 'módulo', 'testing', 'debug',
+      'deployment', 'servidor', 'cliente', 'frontend', 'backend', 'sql', 'react', 'node'];
 
     respuestas.forEach(r => {
       const texto = (r.texto || r.content || '').toLowerCase();
@@ -511,8 +511,8 @@ class RubricaEvaluationService {
     respuestas.forEach(r => {
       const texto = (r.texto || r.content || '').toLowerCase();
       const tieneEjemplos = texto.includes('ejemplo') || texto.includes('por ejemplo') ||
-                            texto.includes('experiencia') || texto.includes('proyecto') ||
-                            texto.includes('implementé') || texto.includes('desarrollé');
+        texto.includes('experiencia') || texto.includes('proyecto') ||
+        texto.includes('implementé') || texto.includes('desarrollé');
 
       if (tieneEjemplos) {
         puntos += 4 / total;
@@ -542,7 +542,7 @@ class RubricaEvaluationService {
     const total = respuestas.length;
 
     const palabrasCompetencias = ['equipo', 'colabor', 'liderazgo', 'resolver', 'problem', 'solución',
-                                   'comunicación', 'organización', 'planificación', 'creatividad'];
+      'comunicación', 'organización', 'planificación', 'creatividad'];
 
     respuestas.forEach(r => {
       const texto = (r.texto || r.content || '').toLowerCase();
