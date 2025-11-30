@@ -1,3 +1,4 @@
+require('dotenv').config(); // Cargar variables de entorno
 const path = require('path');
 const { uploadFile } = require('../services/cloudinary.service');
 const logger = require('../services/logger.service');
@@ -20,15 +21,19 @@ async function uploadReferenceCVToCloudinary() {
             public_id: 'cv_ejemplo_tecsup'
         });
 
+        if (!result.success) {
+            throw new Error(result.error || 'Error desconocido al subir archivo');
+        }
+
         console.log('✅ CV de referencia subido exitosamente!');
-        console.log('📋 URL:', result.secure_url);
-        console.log('🆔 Public ID:', result.public_id);
+        console.log('📋 URL:', result.url);
+        console.log('🆔 Public ID:', result.publicId);
         console.log('\n📝 Agrega esta URL a tu archivo .env:');
-        console.log(`REFERENCE_CV_URL=${result.secure_url}`);
+        console.log(`REFERENCE_CV_URL=${result.url}`);
 
         return result;
     } catch (error) {
-        console.error('❌ Error subiendo CV de referencia:', error);
+        console.error('❌ Error subiendo CV de referencia:', error.message);
         throw error;
     }
 }
