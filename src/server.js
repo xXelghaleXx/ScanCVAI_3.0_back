@@ -338,4 +338,3 @@ process.on('unhandledRejection', (reason, promise) => {
 
 // 🚀 Inicializar servidor
 initializeServer();
-```
