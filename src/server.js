@@ -117,7 +117,7 @@ app.get("/api/health", async (req, res) => {
 
     // El servidor está saludable aunque Llama no esté conectado
     const allHealthy = services.database === "connected" &&
-                       services.file_extractor === "ready";
+      services.file_extractor === "ready";
 
     res.status(allHealthy ? 200 : 503).json({
       status: allHealthy ? "healthy" : "degraded",
@@ -317,11 +317,25 @@ process.on('uncaughtException', (error) => {
 });
 
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error("💥 Promise rechazada no manejada", new Error(reason), {
-    promise: promise.toString()
+  // Convertir reason a string/error apropiadamente
+  const errorMessage = reason instanceof Error
+    ? reason.message
+    : (typeof reason === 'object' ? JSON.stringify(reason) : String(reason));
+
+  const errorStack = reason instanceof Error ? reason.stack : 'No stack trace';
+
+  logger.error("💥 Promise rechazada no manejada", {
+    error: errorMessage,
+    stack: errorStack,
+    promise: promise.toString(),
+    category: 'unhandled_rejection'
   });
-  process.exit(1);
+
+  // NO cerrar el servidor - solo loggear el error
+  // Esto evita crashes por errores de IA timeout
+  logger.warn("⚠️ Servidor continúa ejecutándose a pesar del error");
 });
 
 // 🚀 Inicializar servidor
 initializeServer();
+```
